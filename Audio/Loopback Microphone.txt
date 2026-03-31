@@ -1,0 +1,7 @@
+# PulseAudio Only
+
+# Enable
+pactl load-module module-loopback
+
+# Disable
+pactl unload-module module-loopback
