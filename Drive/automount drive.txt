@@ -1,0 +1,78 @@
+1) List your drives and find the partition
+
+Run:
+
+lsblk -f
+
+You’ll see something like:
+
+NAME   FSTYPE LABEL UUID                                 MOUNTPOINTS
+nvme0n1
+├─nvme0n1p1 vfat        1234-ABCD                        /boot/efi
+├─nvme0n1p2 ext4        aaaa-bbbb-cccc-dddd             /
+nvme1n1
+└─nvme1n1p1 ext4  Data  11111111-2222-3333-4444-555555555555
+
+Find the partition for the internal drive you want KDE to stop prompting for.
+Write down:
+
+the device name like /dev/nvme1n1p1
+the filesystem type like ext4, ntfs, xfs, or btrfs
+the UUID
+
+You can double-check one partition with:
+
+sudo blkid /dev/nvme1n1p1
+
+Replace /dev/nvme1n1p1 with your actual partition.
+
+2) Create a mount point
+
+Make a place for the drive to live:
+
+sudo mkdir -p /mnt/data
+
+If you want the drive visible to your user without permission hassles, make yourself owner:
+
+sudo chown $USER:$USER /mnt/data
+3) Back up your current fstab
+
+Before editing, save a backup:
+
+sudo cp /etc/fstab /etc/fstab.backup
+4) Open /etc/fstab
+
+Edit it with nano:
+
+sudo nano /etc/fstab
+
+Go to the bottom and add one line matching your filesystem.
+
+If the drive is ext4
+UUID=11111111-2222-3333-4444-555555555555 /mnt/data ext4 defaults,nofail 0 2
+If the drive is xfs
+UUID=11111111-2222-3333-4444-555555555555 /mnt/data xfs defaults,nofail 0 2
+If the drive is btrfs
+UUID=11111111-2222-3333-4444-555555555555 /mnt/data btrfs defaults,nofail 0 0
+If the drive is ntfs
+
+Use ntfs3 on modern kernels:
+
+UUID=11111111-2222-3333-4444-555555555555 /mnt/data ntfs3 uid=1000,gid=1000,rw,nofail 0 0
+If the drive is exfat
+UUID=11111111-2222-3333-4444-555555555555 /mnt/data exfat uid=1000,gid=1000,rw,nofail 0 0
+
+Replace the UUID with your real one.
+
+Then save and exit:
+
+Ctrl+O
+Enter
+Ctrl+X
+5) Test the fstab entry without rebooting
+
+Run:
+
+sudo mount -a
+
+If it returns no output, that usually means it worked.
