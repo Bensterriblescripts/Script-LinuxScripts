@@ -1,0 +1,3 @@
+sudo -u git mkdir /srv/git/newrepo.git
+cd /srv/git/newrepo.git
+sudo -u git git init --bare

@@ -1,0 +1,2 @@
+git remote set-url origin git@192.168.5.147:/srv/git/Website-LVVTA.git
+git remote -v
