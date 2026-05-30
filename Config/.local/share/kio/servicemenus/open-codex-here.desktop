@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=inode/directory
+Actions=RunCodexDir
+
+[Desktop Action RunCodexDir]
+Name=Open Codex Here
+Icon=com.visualstudio.code.oss
+Exec=ghostty --working-directory=%F -e /home/ben/.local/bin/codex
