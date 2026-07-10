@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Priority=TopLevel
+MimeType=inode/directory
+Actions=RunQuickCodexTask
+
+[Desktop Action RunQuickCodexTask]
+Name=Run Codex Quick
+Icon=utilities-terminal
+Exec=/home/ben/.local/bin/run-quick-codex-task %f

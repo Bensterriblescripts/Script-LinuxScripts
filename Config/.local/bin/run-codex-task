@@ -1,0 +1,260 @@
+#!/usr/bin/env fish
+
+set -l inside false
+set -l directory ""
+
+if test (count $argv) -gt 0; and test "$argv[1]" = --inside
+    set inside true
+    if test (count $argv) -gt 1
+        set directory "$argv[2]"
+    end
+else if test (count $argv) -gt 0
+    set directory "$argv[1]"
+end
+
+if test -z "$directory"
+    kdialog --title "Run Codex Deep Failed" --error "Dolphin did not provide a target directory. Nothing was opened."
+    exit 1
+end
+
+if not test -d "$directory"; or not test -r "$directory"; or not test -x "$directory"
+    kdialog --title "Run Codex Deep Failed" --error "The target directory does not exist or is not accessible:\n$directory"
+    exit 1
+end
+
+if not $inside
+    exec ghostty --working-directory="$directory" -e /home/ben/.local/bin/run-codex-task --inside "$directory"
+end
+
+set -g temp_dir ""
+
+function cleanup --on-event fish_exit
+    if test -n "$temp_dir"
+        rm -rf -- "$temp_dir"
+    end
+end
+
+function fail
+    set -l stage "$argv[1]"
+    if test -n "$temp_dir"
+        rm -rf -- "$temp_dir"
+        set -g temp_dir ""
+    end
+    printf '\nRun Codex Deep Failed: %s\n' "$stage"
+    read -P "Press Enter to close."
+    exit 1
+end
+
+function print_usage
+    set -l label "$argv[1]"
+    set -l usage_json (timeout 10 bash -c '
+        coproc CODEX_USAGE { /home/ben/.local/bin/codex app-server --stdio 2>/dev/null; }
+        trap '\''kill "$CODEX_USAGE_PID" 2>/dev/null; wait "$CODEX_USAGE_PID" 2>/dev/null'\'' EXIT
+        printf '\''%s\n'\'' \
+            '\''{"method":"initialize","id":1,"params":{"clientInfo":{"name":"run_codex_deep","title":"Run Codex Deep","version":"1.0.0"}}}'\'' \
+            '\''{"method":"initialized"}'\'' \
+            '\''{"method":"account/rateLimits/read","id":2}'\'' >&"${CODEX_USAGE[1]}"
+        while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
+            if jq -e '\''select(.id == 2 and .result != null)'\'' >/dev/null 2>&1 <<<"$line"; then
+                printf '\''%s\n'\'' "$line"
+                break
+            fi
+        done
+    ' | jq -c '.result' 2>/dev/null)
+
+    printf '\n=== Codex usage: %s ===\n' "$label"
+    if test (count $usage_json) -ne 1
+        printf 'Usage unavailable.\n'
+        return
+    end
+
+    printf '%s\n' "$usage_json" | jq -r '
+        def duration:
+            if . >= 1440 then "\(. / 1440) days"
+            elif . >= 60 then "\(. / 60) hours"
+            else "\(.) minutes"
+            end;
+        def window($name; $value):
+            if $value == null then empty
+            else "\($name) (\($value.windowDurationMins | duration)): \(100 - $value.usedPercent)% remaining; resets \($value.resetsAt | strflocaltime("%a %d %b %H:%M"))"
+            end;
+        (.rateLimitsByLimitId.codex // .rateLimits) as $limit |
+        "Plan: \($limit.planType // "unknown")",
+        window("Primary"; $limit.primary),
+        window("Secondary"; $limit.secondary),
+        if .rateLimitResetCredits == null then empty
+        else "Reset credits: \(.rateLimitResetCredits.availableCount)"
+        end
+    '
+end
+
+set temp_dir (mktemp -d)
+or fail "Temporary workspace creation failed."
+
+print_usage "before"
+printf '\n'
+read -P "Task: " task
+set task (string trim -- "$task")
+if test -z "$task"
+    fail "Task input was empty."
+end
+
+set -l research_response "$temp_dir/research-response"
+set -l research_events "$temp_dir/research-events.jsonl"
+set -l plan_response "$temp_dir/plan-response"
+set -l plan_events "$temp_dir/plan-events.jsonl"
+set -l implementation_response "$temp_dir/implementation-response"
+set -l implementation_events "$temp_dir/implementation-events.jsonl"
+set -l error_handling_response "$temp_dir/error-handling-response"
+set -l error_handling_events "$temp_dir/error-handling-events.jsonl"
+
+set -l research_prompt (string join \n \
+    "Perform websearches and analyse the code to provide research on the following task." \
+    "Do not plan out the entire task, only provide research, notes, good practise to perform the task itself." \
+    "Task $task" | string collect)
+
+printf 'Researching...\n\n'
+printf '%s\n' "$research_prompt" | /home/ben/.local/bin/codex --search exec \
+    --model gpt-5.6-luna \
+    --config 'model_reasoning_effort="high"' \
+    --dangerously-bypass-approvals-and-sandbox \
+    --skip-git-repo-check \
+    --json \
+    --output-last-message "$research_response" \
+    - | tee "$research_events" | jq -r '
+        select(.type == "item.completed") |
+        .item |
+        if .type == "agent_message" then .text
+        elif .type == "command_execution" then .command // empty
+        else empty
+        end
+    '
+or fail "Research failed."
+
+if not test -s "$research_response"
+    fail "Research response capture failed."
+end
+
+set -l research_ids (jq -r 'select(.type == "thread.started") | .thread_id // empty' "$research_events")
+or fail "Research session ID extraction failed."
+if test (count $research_ids) -ne 1; or not string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$research_ids[1]"
+    fail "Research session ID extraction failed."
+end
+set -l research_id "$research_ids[1]"
+
+set -l planning_prompt (string join \n \
+    "Using the research provided, create a plan on how you intend to implement the following task." \
+    "Make each step concise. Be thorough, take your time to ensure it isn't introducing excessive code or context and that it meets the general purpose." \
+    "Do not return anything other than the plan, do not include comments unrelated to the plan." | string collect)
+
+printf 'Planning...\n\n'
+printf '%s\n' "$planning_prompt" | /home/ben/.local/bin/codex exec resume \
+    --model gpt-5.6-sol \
+    --config 'model_reasoning_effort="high"' \
+    --dangerously-bypass-approvals-and-sandbox \
+    --skip-git-repo-check \
+    --json \
+    --output-last-message "$plan_response" \
+    "$research_id" \
+    - | tee "$plan_events" | jq -r '
+        select(.type == "item.completed") |
+        .item |
+        if .type == "agent_message" then .text
+        elif .type == "command_execution" then .command // empty
+        else empty
+        end
+    '
+or fail "Planning failed."
+
+if not test -s "$plan_response"
+    fail "Plan response capture failed."
+end
+
+set -l planning_ids (jq -r 'select(.type == "thread.started") | .thread_id // empty' "$plan_events")
+or fail "Planning session ID extraction failed."
+if test (count $planning_ids) -ne 1; or test "$planning_ids[1]" != "$research_id"
+    fail "Planning did not resume the research session."
+end
+set -l plan (string collect < "$plan_response")
+if not string match -qr '\S' -- "$plan"
+    fail "Plan response capture failed."
+end
+
+set -l implementation_prompt (string join \n \
+    "For the following prompt $task implement the following plan" \
+    "Plan: $plan" | string collect)
+
+printf 'Implementing...\n\n'
+printf '%s\n' "$implementation_prompt" | /home/ben/.local/bin/codex exec \
+    --model gpt-5.6-luna \
+    --config 'model_reasoning_effort="high"' \
+    --dangerously-bypass-approvals-and-sandbox \
+    --skip-git-repo-check \
+    --json \
+    --output-last-message "$implementation_response" \
+    - | tee "$implementation_events" | jq -r '
+        select(.type == "item.completed") |
+        .item |
+        if .type == "agent_message" then .text
+        elif .type == "command_execution" then .command // empty
+        else empty
+        end
+    '
+or fail "Implementation failed."
+
+if not test -s "$implementation_response"
+    fail "Implementation response capture failed."
+end
+
+set -l implementation_ids (jq -r 'select(.type == "thread.started") | .thread_id // empty' "$implementation_events")
+or fail "Implementation session ID extraction failed."
+if test (count $implementation_ids) -ne 1; or not string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$implementation_ids[1]"
+    fail "Implementation session ID extraction failed."
+end
+set -l implementation_id "$implementation_ids[1]"
+if test "$implementation_id" = "$research_id"
+    fail "Implementation did not start a separate session."
+end
+
+set -l error_handling_prompt (string join \n \
+    "Add in error handling where there isn't any currently and ensure each error looks like the following." \
+    "{dynamic error based on location and context}  " \
+    "Error: {rawerrorstring/s}" | string collect)
+
+printf 'Adding error handling...\n\n'
+printf '%s\n' "$error_handling_prompt" | /home/ben/.local/bin/codex exec resume \
+    --model gpt-5.6-luna \
+    --config 'model_reasoning_effort="high"' \
+    --dangerously-bypass-approvals-and-sandbox \
+    --skip-git-repo-check \
+    --json \
+    --output-last-message "$error_handling_response" \
+    "$implementation_id" \
+    - | tee "$error_handling_events" | jq -r '
+        select(.type == "item.completed") |
+        .item |
+        if .type == "agent_message" then .text
+        elif .type == "command_execution" then .command // empty
+        else empty
+        end
+    '
+or fail "Error handling failed."
+
+if not test -s "$error_handling_response"
+    fail "Error handling response capture failed."
+end
+
+set -l error_handling_ids (jq -r 'select(.type == "thread.started") | .thread_id // empty' "$error_handling_events")
+or fail "Error handling session ID extraction failed."
+if test (count $error_handling_ids) -ne 1; or test "$error_handling_ids[1]" != "$implementation_id"
+    fail "Error handling did not resume the implementation session."
+end
+
+rm -rf -- "$temp_dir"
+set -g temp_dir ""
+clear
+exec /home/ben/.local/bin/codex resume \
+    --model gpt-5.6-luna \
+    --config 'model_reasoning_effort="high"' \
+    --dangerously-bypass-approvals-and-sandbox \
+    "$implementation_id"

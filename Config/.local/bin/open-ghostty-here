@@ -1,0 +1,20 @@
+#!/bin/sh
+
+mode=$1
+dir=$2
+
+if [ -z "$dir" ]; then
+    kdialog --title "Open Here Failed" --error "Dolphin did not provide a target directory. Nothing was opened."
+    exit 1
+fi
+
+if [ ! -d "$dir" ]; then
+    kdialog --title "Open Here Failed" --error "The target directory does not exist or is not accessible:\n$dir"
+    exit 1
+fi
+
+if [ "$mode" = codex ]; then
+    exec ghostty --working-directory="$dir" -e /home/ben/.local/bin/codex
+fi
+
+exec ghostty --working-directory="$dir" --gtk-single-instance=false

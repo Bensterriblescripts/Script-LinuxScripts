@@ -1,10 +1,11 @@
 [Desktop Entry]
 Type=Service
 ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Priority=TopLevel
 MimeType=inode/directory
 Actions=RunCodexDir
 
 [Desktop Action RunCodexDir]
-Name=Open Codex Here
+Name=Run Codex
 Icon=com.visualstudio.code.oss
-Exec=ghostty --working-directory=%F -e /home/ben/.local/bin/codex
+Exec=/home/ben/.local/bin/open-ghostty-here codex %f
