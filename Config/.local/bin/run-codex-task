@@ -45,29 +45,28 @@ function fail
     exit 1
 end
 
-function print_usage
-    set -l label "$argv[1]"
-    set -l usage_json (timeout 10 bash -c '
-        coproc CODEX_USAGE { /home/ben/.local/bin/codex app-server --stdio 2>/dev/null; }
-        trap '\''kill "$CODEX_USAGE_PID" 2>/dev/null; wait "$CODEX_USAGE_PID" 2>/dev/null'\'' EXIT
-        printf '\''%s\n'\'' \
-            '\''{"method":"initialize","id":1,"params":{"clientInfo":{"name":"run_codex_deep","title":"Run Codex Deep","version":"1.0.0"}}}'\'' \
-            '\''{"method":"initialized"}'\'' \
-            '\''{"method":"account/rateLimits/read","id":2}'\'' >&"${CODEX_USAGE[1]}"
-        while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
-            if jq -e '\''select(.id == 2 and .result != null)'\'' >/dev/null 2>&1 <<<"$line"; then
-                printf '\''%s\n'\'' "$line"
-                break
-            fi
-        done
-    ' | jq -c '.result' 2>/dev/null)
+set temp_dir (mktemp -d)
+or fail "Temporary workspace creation failed."
 
-    printf '\n=== Codex usage: %s ===\n' "$label"
-    if test (count $usage_json) -ne 1
-        printf 'Usage unavailable.\n'
-        return
-    end
+printf '%s\n\n' "$directory"
+set -l usage_json (timeout 10 bash -c '
+    coproc CODEX_USAGE { /home/ben/.local/bin/codex app-server --stdio 2>/dev/null; }
+    trap '\''kill "$CODEX_USAGE_PID" 2>/dev/null; wait "$CODEX_USAGE_PID" 2>/dev/null'\'' EXIT
+    printf '\''%s\n'\'' \
+        '\''{"method":"initialize","id":1,"params":{"clientInfo":{"name":"run_codex_deep","title":"Run Codex Deep","version":"1.0.0"}}}'\'' \
+        '\''{"method":"initialized"}'\'' \
+        '\''{"method":"account/rateLimits/read","id":2}'\'' >&"${CODEX_USAGE[1]}"
+    while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
+        if jq -e '\''select(.id == 2 and .result != null)'\'' >/dev/null 2>&1 <<<"$line"; then
+            printf '\''%s\n'\'' "$line"
+            break
+        fi
+    done
+' | jq -c '.result' 2>/dev/null)
 
+if test (count $usage_json) -ne 1
+    printf 'Usage unavailable.\n'
+else
     printf '%s\n' "$usage_json" | jq -r '
         def duration:
             if . >= 1440 then "\(. / 1440) days"
@@ -79,7 +78,6 @@ function print_usage
             else "\($name) (\($value.windowDurationMins | duration)): \(100 - $value.usedPercent)% remaining; resets \($value.resetsAt | strflocaltime("%a %d %b %H:%M"))"
             end;
         (.rateLimitsByLimitId.codex // .rateLimits) as $limit |
-        "Plan: \($limit.planType // "unknown")",
         window("Primary"; $limit.primary),
         window("Secondary"; $limit.secondary),
         if .rateLimitResetCredits == null then empty
@@ -87,13 +85,9 @@ function print_usage
         end
     '
 end
-
-set temp_dir (mktemp -d)
-or fail "Temporary workspace creation failed."
-
-print_usage "before"
 printf '\n'
 read -P "Task: " task
+printf '\e]133;C\e\\'
 set task (string trim -- "$task")
 if test -z "$task"
     fail "Task input was empty."
@@ -110,7 +104,7 @@ set -l error_handling_events "$temp_dir/error-handling-events.jsonl"
 
 set -l research_prompt (string join \n \
     "Perform websearches and analyse the code to provide research on the following task." \
-    "Do not plan out the entire task, only provide research, notes, good practise to perform the task itself." \
+    "Do not plan out the entire task, only provide research, notes and good practices to perform the task itself." \
     "Task $task" | string collect)
 
 printf 'Researching...\n\n'
@@ -144,8 +138,7 @@ set -l research_id "$research_ids[1]"
 
 set -l planning_prompt (string join \n \
     "Using the research provided, create a plan on how you intend to implement the following task." \
-    "Make each step concise. Be thorough, take your time to ensure it isn't introducing excessive code or context and that it meets the general purpose." \
-    "Do not return anything other than the plan, do not include comments unrelated to the plan." | string collect)
+    "Make each step concise. Be thorough, take your time to ensure it isn't introducing excessive code, it meets the general purpose and that if there aren't any changes required that nothing changes." | string collect)
 
 printf 'Planning...\n\n'
 printf '%s\n' "$planning_prompt" | /home/ben/.local/bin/codex exec resume \
@@ -181,7 +174,7 @@ if not string match -qr '\S' -- "$plan"
 end
 
 set -l implementation_prompt (string join \n \
-    "For the following prompt $task implement the following plan" \
+    "For the following prompt $task implement the following plan." \
     "Plan: $plan" | string collect)
 
 printf 'Implementing...\n\n'
@@ -217,7 +210,7 @@ if test "$implementation_id" = "$research_id"
 end
 
 set -l error_handling_prompt (string join \n \
-    "Add in error handling where there isn't any currently and ensure each error looks like the following." \
+    "Add in error handling to the recently changed or added areas if there isn't any currently and ensure each error looks like the following;" \
     "{dynamic error based on location and context}  " \
     "Error: {rawerrorstring/s}" | string collect)
 

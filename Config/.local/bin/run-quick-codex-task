@@ -64,29 +64,25 @@ function fail
     exit 1
 end
 
-function print_usage
-    set -l label "$argv[1]"
-    set -l usage_json (timeout 10 bash -c '
-        coproc CODEX_USAGE { /home/ben/.local/bin/codex app-server --stdio 2>/dev/null; }
-        trap '\''kill "$CODEX_USAGE_PID" 2>/dev/null; wait "$CODEX_USAGE_PID" 2>/dev/null'\'' EXIT
-        printf '\''%s\n'\'' \
-            '\''{"method":"initialize","id":1,"params":{"clientInfo":{"name":"run_codex_quick","title":"Run Codex Quick","version":"1.0.0"}}}'\'' \
-            '\''{"method":"initialized"}'\'' \
-            '\''{"method":"account/rateLimits/read","id":2}'\'' >&"${CODEX_USAGE[1]}"
-        while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
-            if jq -e '\''select(.id == 2 and .result != null)'\'' >/dev/null 2>&1 <<<"$line"; then
-                printf '\''%s\n'\'' "$line"
-                break
-            fi
-        done
-    ' | jq -c '.result' 2>/dev/null)
+printf '%s\n\n' "$directory"
+set -l usage_json (timeout 10 bash -c '
+    coproc CODEX_USAGE { /home/ben/.local/bin/codex app-server --stdio 2>/dev/null; }
+    trap '\''kill "$CODEX_USAGE_PID" 2>/dev/null; wait "$CODEX_USAGE_PID" 2>/dev/null'\'' EXIT
+    printf '\''%s\n'\'' \
+        '\''{"method":"initialize","id":1,"params":{"clientInfo":{"name":"run_codex_quick","title":"Run Codex Quick","version":"1.0.0"}}}'\'' \
+        '\''{"method":"initialized"}'\'' \
+        '\''{"method":"account/rateLimits/read","id":2}'\'' >&"${CODEX_USAGE[1]}"
+    while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
+        if jq -e '\''select(.id == 2 and .result != null)'\'' >/dev/null 2>&1 <<<"$line"; then
+            printf '\''%s\n'\'' "$line"
+            break
+        fi
+    done
+' | jq -c '.result' 2>/dev/null)
 
-    printf '\n=== Codex usage: %s ===\n' "$label"
-    if test (count $usage_json) -ne 1
-        printf 'Codex usage lookup  \nError: Usage data was unavailable.\n'
-        return
-    end
-
+if test (count $usage_json) -ne 1
+    printf 'Codex usage lookup  \nError: Usage data was unavailable.\n'
+else
     printf '%s\n' "$usage_json" | jq -r '
         def duration:
             if . >= 1440 then "\(. / 1440) days"
@@ -98,7 +94,6 @@ function print_usage
             else "\($name) (\($value.windowDurationMins | duration)): \(100 - $value.usedPercent)% remaining; resets \($value.resetsAt | strflocaltime("%a %d %b %H:%M"))"
             end;
         (.rateLimitsByLimitId.codex // .rateLimits) as $limit |
-        "Plan: \($limit.planType // "unknown")",
         window("Primary"; $limit.primary),
         window("Secondary"; $limit.secondary),
         if .rateLimitResetCredits == null then empty
@@ -106,10 +101,9 @@ function print_usage
         end
     '
 end
-
-print_usage "before"
 printf '\n'
 read -P "Task: " task
+printf '\e]133;C\e\\'
 set task (string trim -- "$task")
 if test -z "$task"
     fail "Task input"
@@ -125,7 +119,7 @@ set temp_dir "$temp_dir_result"
 set -l response_file "$temp_dir/response"
 set -l events_file "$temp_dir/events.jsonl"
 set -l prompt (string join \n \
-    "Implement this task with as little changes/additions as required." \
+    "Implement this task with as little changes/additions as required. If something is not required, don't implement it." \
     "Task: $task" | string collect)
 
 printf 'Implementing...\n\n'
