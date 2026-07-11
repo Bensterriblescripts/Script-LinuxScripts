@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Priority=TopLevel
+MimeType=inode/directory
+Actions=RunModerateCodexTask
+
+[Desktop Action RunModerateCodexTask]
+Name=Run Codex Moderate
+Icon=utilities-terminal
+Exec=/home/ben/.local/bin/run-moderate-codex-task %f

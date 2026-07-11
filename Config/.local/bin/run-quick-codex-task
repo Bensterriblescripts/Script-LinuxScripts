@@ -1,32 +1,58 @@
 #!/usr/bin/env fish
 
 set -l inside false
-set -l directory ""
+set -l raw_directory ""
 
-if test (count $argv) -gt 0; and test "$argv[1]" = --inside
+if test (count $argv) -eq 2; and test "$argv[1]" = --inside
     set inside true
-    if test (count $argv) -gt 1
-        set directory "$argv[2]"
-    end
-else if test (count $argv) -gt 0
-    set directory "$argv[1]"
+    set raw_directory "$argv[2]"
+else if test (count $argv) -eq 1
+    set raw_directory "$argv[1]"
+else
+    printf 'Run Codex Quick Failed: argument validation\nError: expected exactly one target directory, or --inside followed by exactly one target directory.\n' >&2
+    exit 2
 end
 
-if test -z "$directory"
-    kdialog --title "Run Codex Quick Failed" --error "Dolphin target directory  \nError: Dolphin did not provide a target directory. Nothing was opened."
+if test -z "$raw_directory"
+    printf 'Run Codex Quick Failed: target directory input\nError: Dolphin did not provide a target directory.\n' >&2
     exit 1
 end
 
-if not test -d "$directory"; or not test -r "$directory"; or not test -x "$directory"
-    kdialog --title "Run Codex Quick Failed" --error "Target directory validation  \nError: The target directory does not exist or is not accessible:\n$directory"
+for dependency in realpath mktemp timeout jq
+    if not type -q "$dependency"
+        printf 'Run Codex Quick Failed: dependency validation\nError: missing dependency: %s\n' "$dependency" >&2
+        exit 127
+    end
+end
+if not test -x /home/ben/.local/bin/codex
+    printf 'Run Codex Quick Failed: Codex executable validation\nError: /home/ben/.local/bin/codex is not executable.\n' >&2
+    exit 127
+end
+
+set -l directory (realpath -e -- "$raw_directory" 2>&1)
+set -l directory_status $status
+if test $directory_status -ne 0; or test (count $directory) -ne 1; or not test -d "$directory"; or not test -r "$directory"; or not test -x "$directory"
+    set -l directory_error (printf '%s\n' $directory | string collect)
+    if test -z "$directory_error"
+        set directory_error "The target directory does not exist or is not accessible: $raw_directory"
+    end
+    printf 'Run Codex Quick Failed: target directory validation\nError: %s\n' "$directory_error" >&2
     exit 1
 end
 
 if not $inside
-    ghostty --working-directory="$directory" -e /home/ben/.local/bin/run-quick-codex-task --inside "$directory"
+    if not type -q ghostty
+        printf 'Run Codex Quick Failed: terminal dependency validation\nError: missing dependency: ghostty\n' >&2
+        exit 127
+    end
+    set -l ghostty_output (ghostty --working-directory="$directory" -e /home/ben/.local/bin/run-quick-codex-task --inside "$directory" 2>&1)
     set -l ghostty_status $status
     if test $ghostty_status -ne 0
-        printf '\nOpening terminal  \nError: ghostty exited with status %s.\n' "$ghostty_status"
+        set -l ghostty_error (printf '%s\n' $ghostty_output | string collect)
+        if test -z "$ghostty_error"
+            set ghostty_error "ghostty exited with status $ghostty_status."
+        end
+        printf 'Opening terminal failed.\nError: %s\n' "$ghostty_error" >&2
         exit $ghostty_status
     end
     exit 0
@@ -39,51 +65,101 @@ function cleanup --on-event fish_exit
         set -l cleanup_error (rm -rf -- "$temp_dir" 2>&1)
         set -l cleanup_status $status
         if test $cleanup_status -ne 0
-            printf '\nTemporary workspace cleanup  \nError: %s\n' (string join '\n' -- $cleanup_error) >&2
+            set -l cleanup_message (printf '%s\n' $cleanup_error | string collect)
+            if test -z "$cleanup_message"
+                set cleanup_message "rm exited with status $cleanup_status."
+            end
+            printf '\nTemporary workspace cleanup\nError: %s\n' "$cleanup_message" >&2
+        else
+            set -g temp_dir ""
         end
     end
 end
 
+function handle_interrupt --on-signal INT
+    printf 'Run Codex Quick interrupted.\nError: received interrupt signal.\n' >&2
+    exit 130
+end
+
 function fail
-    set -l failure_status $status
     set -l stage "$argv[1]"
-    set -l raw_error "$argv[2]"
+    set -l raw_error ""
+    if test (count $argv) -gt 1
+        set raw_error "$argv[2]"
+    end
     if test -z "$raw_error"
-        set raw_error "Command exited with status $failure_status."
+        set raw_error "Command exited unsuccessfully."
     end
     if test -n "$temp_dir"
         set -l cleanup_error (rm -rf -- "$temp_dir" 2>&1)
         set -l cleanup_status $status
-        set -g temp_dir ""
         if test $cleanup_status -ne 0
-            set raw_error "$raw_error Temporary workspace cleanup failed: (string join '\\n' -- $cleanup_error)"
+            set -l cleanup_message (printf '%s\n' $cleanup_error | string collect)
+            if test -z "$cleanup_message"
+                set cleanup_message "rm exited with status $cleanup_status."
+            end
+            set raw_error (printf '%s\nTemporary workspace cleanup failed: %s' "$raw_error" "$cleanup_message" | string collect)
+        else
+            set -g temp_dir ""
         end
     end
-    printf '\n%s  \nError: %s\n' "$stage" "$raw_error"
+    printf '\n%s\nError: %s\n' "$stage" "$raw_error" >&2
     read -P "Press Enter to close."
     exit 1
 end
 
 printf '%s\n\n' "$directory"
-set -l usage_json (timeout 10 bash -c '
-    coproc CODEX_USAGE { /home/ben/.local/bin/codex app-server --stdio 2>/dev/null; }
-    trap '\''kill "$CODEX_USAGE_PID" 2>/dev/null; wait "$CODEX_USAGE_PID" 2>/dev/null'\'' EXIT
-    printf '\''%s\n'\'' \
-        '\''{"method":"initialize","id":1,"params":{"clientInfo":{"name":"run_codex_quick","title":"Run Codex Quick","version":"1.0.0"}}}'\'' \
-        '\''{"method":"initialized"}'\'' \
-        '\''{"method":"account/rateLimits/read","id":2}'\'' >&"${CODEX_USAGE[1]}"
-    while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
-        if jq -e '\''select(.id == 2 and .result != null)'\'' >/dev/null 2>&1 <<<"$line"; then
-            printf '\''%s\n'\'' "$line"
-            break
-        fi
-    done
-' | jq -c '.result' 2>/dev/null)
+set -l usage_json (timeout --kill-after=2s 10s bash -c '
+set -u
+coproc CODEX_USAGE { exec /home/ben/.local/bin/codex app-server --stdio 2>/dev/null; }
+terminate_child() {
+    local child="${CODEX_USAGE_PID:-}"
+    if [[ -n "$child" ]] && kill -0 "$child" 2>/dev/null; then
+        kill -TERM "$child" 2>/dev/null || true
+        for _ in {1..20}; do
+            if ! kill -0 "$child" 2>/dev/null; then break; fi
+            sleep 0.1
+        done
+        if kill -0 "$child" 2>/dev/null; then kill -KILL "$child" 2>/dev/null || true; fi
+    fi
+    if [[ -n "$child" ]]; then wait "$child" 2>/dev/null || true; fi
+}
+trap terminate_child EXIT
+trap "exit 124" TERM INT
+printf "%s\n" "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"run_codex_quick\",\"title\":\"Run Codex Quick\",\"version\":\"1.0.0\"}}}" "{\"method\":\"initialized\"}" "{\"method\":\"account/rateLimits/read\",\"id\":2}" >&"${CODEX_USAGE[1]}"
+while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
+    if jq -e ".id == 2 and (.result | type == \"object\")" <<<"$line" >/dev/null 2>&1; then
+        printf "%s\n" "$line"
+        exit 0
+    fi
+done
+exit 1
+' | jq -c 'select(type == "object" and (.result | type == "object")) | .result' 2>/dev/null)
 
 if test (count $usage_json) -ne 1
     printf 'Codex usage lookup  \nError: Usage data was unavailable.\n'
 else
-    printf '%s\n' "$usage_json" | jq -r '
+    set -l usage_validation (printf '%s\n' "$usage_json" | jq -er '
+        def valid_number: type == "number";
+        def valid_window:
+            type == "object" and
+            (.windowDurationMins? | valid_number) and
+            (.usedPercent? | valid_number) and
+            (.resetsAt? | valid_number);
+        (try .rateLimitsByLimitId.codex catch null) as $by_id |
+        (if ($by_id | type) == "object" then $by_id else (try .rateLimits catch null) end) as $limit |
+        if ($limit | type) != "object" then error("missing rate limit object")
+        elif (($limit.primary? // null) != null and (($limit.primary | valid_window) | not)) then error("invalid primary rate limit")
+        elif (($limit.secondary? // null) != null and (($limit.secondary | valid_window) | not)) then error("invalid secondary rate limit")
+        elif ((.rateLimitResetCredits? // null) != null and ((.rateLimitResetCredits | type) != "object" or (.rateLimitResetCredits.availableCount? | valid_number) | not)) then error("invalid reset credits")
+        else "valid"
+        end
+    ' 2>&1)
+    set -l usage_validation_status $status
+    if test $usage_validation_status -ne 0
+        printf 'Codex usage lookup  \nError: Usage data was unavailable.\n'
+    else
+        printf '%s\n' "$usage_json" | jq -r '
         def duration:
             if . >= 1440 then "\(. / 1440) days"
             elif . >= 60 then "\(. / 60) hours"
@@ -99,78 +175,169 @@ else
         if .rateLimitResetCredits == null then empty
         else "Reset credits: \(.rateLimitResetCredits.availableCount)"
         end
-    '
+        '
+    end
 end
 printf '\n'
 read -P "Task: " task
+set -l task_input_status $status
+if test $task_input_status -ne 0
+    fail "Task input" "read exited with status $task_input_status."
+end
 printf '\e]133;C\e\\'
 set task (string trim -- "$task")
 if test -z "$task"
-    fail "Task input"
+    fail "Task input" "Task input was empty."
 end
 
 set -l temp_dir_result (mktemp -d 2>&1)
 set -l temp_dir_status $status
-if test $temp_dir_status -ne 0
-    fail "Temporary workspace creation" (string join '\n' -- $temp_dir_result)
+if test $temp_dir_status -ne 0; or test (count $temp_dir_result) -ne 1
+    set -l temp_dir_error (printf '%s\n' $temp_dir_result | string collect)
+    fail "Temporary workspace creation" "$temp_dir_error"
 end
 set temp_dir "$temp_dir_result"
 
 set -l response_file "$temp_dir/response"
 set -l events_file "$temp_dir/events.jsonl"
-set -l prompt (string join \n \
-    "Implement this task with as little changes/additions as required. If something is not required, don't implement it." \
+set -l codex_error_file "$temp_dir/codex.stderr"
+set -l tee_error_file "$temp_dir/tee.stderr"
+set -l jq_error_file "$temp_dir/jq.stderr"
+set -l prompt (printf '%s\n%s\n%s\n%s\n' \
+    "Implement the following user task in the target directory with as few changes as required." \
+    "Treat the task as authoritative. Perform verification and appropriate error handling during implementation; do not defer them to a later pass and do not make unrelated changes." \
+    "Return a JSON response matching the supplied schema. Set requires_manual_input to true only if you cannot continue without an answer from the user; otherwise set it to false. The response must be a non-empty user-facing message." \
     "Task: $task" | string collect)
 
 printf 'Implementing...\n\n'
 printf '%s\n' "$prompt" | /home/ben/.local/bin/codex exec \
     --model gpt-5.6-luna \
     --config 'model_reasoning_effort="high"' \
-    --dangerously-bypass-approvals-and-sandbox \
+    --sandbox workspace-write \
+    --cd "$directory" \
     --skip-git-repo-check \
     --json \
+    --output-schema /home/ben/.local/bin/codex-task-response-schema.json \
     --output-last-message "$response_file" \
-    - | tee "$events_file" | jq -r '
+    - 2>"$codex_error_file" | tee "$events_file" 2>"$tee_error_file" | jq -r '
         select(.type == "item.completed") |
         .item |
-        if .type == "agent_message" then .text
+        if .type == "agent_message" then ((try (.text | fromjson | .response) catch .text) as $message | "\n\($message)\n")
         elif .type == "command_execution" then .command // empty
         else empty
         end
-    '
+    ' 2>"$jq_error_file"
 set -l implementation_statuses $pipestatus
 if test "$implementation_statuses[1]" -ne 0
-    fail "Sending implementation prompt" "printf exited with status $implementation_statuses[1]."
+    set -l raw_error (string collect < "$codex_error_file")
+    if test -z "$raw_error"
+        set raw_error "printf exited with status $implementation_statuses[1]."
+    end
+    fail "Sending implementation prompt" "$raw_error"
 else if test "$implementation_statuses[2]" -ne 0
-    fail "Implementation" "codex exited with status $implementation_statuses[2]."
+    set -l raw_error (string collect < "$codex_error_file")
+    if test -z "$raw_error"
+        set raw_error "codex exited with status $implementation_statuses[2]."
+    end
+    fail "Implementation" "$raw_error"
 else if test "$implementation_statuses[3]" -ne 0
-    fail "Saving implementation events" "tee exited with status $implementation_statuses[3]."
+    set -l raw_error (string collect < "$tee_error_file")
+    if test -z "$raw_error"
+        set raw_error "tee exited with status $implementation_statuses[3]."
+    end
+    fail "Saving implementation events" "$raw_error"
 else if test "$implementation_statuses[4]" -ne 0
-    fail "Displaying implementation output" "jq exited with status $implementation_statuses[4]."
+    set -l raw_error (string collect < "$jq_error_file")
+    if test -z "$raw_error"
+        set raw_error "jq exited with status $implementation_statuses[4]."
+    end
+    fail "Displaying implementation output" "$raw_error"
 end
 
 if not test -s "$response_file"
-    fail "Implementation response capture"
+    fail "Implementation response capture" "The implementation response file was empty."
 end
 
-set -l session_ids (jq -r 'select(.type == "thread.started") | .thread_id // empty' "$events_file")
-or fail "Implementation session ID extraction"
+set -l response_validation (jq -er '
+    if type != "object" then error("response must be a JSON object")
+    elif (keys_unsorted | sort) != ["requires_manual_input", "response"] then error("response has unexpected or missing fields")
+    elif (.requires_manual_input | type) != "boolean" then error("requires_manual_input must be boolean")
+    elif (.response | type) != "string" then error("response must be a string")
+    elif ((.response | test("\\S")) | not) then error("response must be non-empty")
+    elif .requires_manual_input then "manual_input"
+    else "completed"
+    end
+' "$response_file" 2>&1)
+set -l response_validation_status $status
+if test $response_validation_status -ne 0
+    set -l response_error (printf '%s\n' $response_validation | string collect)
+    fail "Implementation response validation" "$response_error"
+end
+set -l response_kind "$response_validation[1]"
+if test "$response_kind" = manual_input
+    printf '\nManual input required  \n%s\n' (jq -r '.response' "$response_file")
+else
+    printf '\nTask completed  \n%s\n' (jq -r '.response' "$response_file")
+end
+
+set -l session_ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$events_file" 2>&1)
+set -l session_id_status $status
+if test $session_id_status -ne 0
+    set -l session_id_error (printf '%s\n' $session_ids | string collect)
+    fail "Implementation session ID extraction" "$session_id_error"
+end
 if test (count $session_ids) -ne 1; or not string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$session_ids[1]"
-    fail "Implementation session ID extraction" "Expected exactly one valid session ID."
+    fail "Implementation session ID extraction" "Expected exactly one valid thread.started session ID."
 end
 set -l session_id "$session_ids[1]"
 
-rm -rf -- "$temp_dir"
-or fail "Removing temporary workspace"
+if test "$response_kind" = manual_input
+    set -l cleanup_result (rm -rf -- "$temp_dir" 2>&1)
+    set -l cleanup_status $status
+    if test $cleanup_status -ne 0
+        set -l cleanup_error (printf '%s\n' $cleanup_result | string collect)
+        if test -z "$cleanup_error"
+            set cleanup_error "rm exited with status $cleanup_status."
+        end
+        fail "Temporary workspace cleanup" "$cleanup_error"
+    end
+    set -g temp_dir ""
+    clear
+    /home/ben/.local/bin/codex resume \
+        --model gpt-5.6-luna \
+        --config 'model_reasoning_effort="high"' \
+        --sandbox workspace-write \
+        --cd "$directory" \
+        --skip-git-repo-check \
+        "$session_id"
+    set -l resume_status $status
+    if test $resume_status -ne 0
+        printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
+        exit $resume_status
+    end
+    exit 0
+end
+
+set -l cleanup_result (rm -rf -- "$temp_dir" 2>&1)
+set -l cleanup_status $status
+if test $cleanup_status -ne 0
+    set -l cleanup_error (printf '%s\n' $cleanup_result | string collect)
+    if test -z "$cleanup_error"
+        set cleanup_error "rm exited with status $cleanup_status."
+    end
+    fail "Removing temporary workspace" "$cleanup_error"
+end
 set -g temp_dir ""
 clear
 /home/ben/.local/bin/codex resume \
     --model gpt-5.6-luna \
     --config 'model_reasoning_effort="high"' \
-    --dangerously-bypass-approvals-and-sandbox \
+    --sandbox workspace-write \
+    --cd "$directory" \
+    --skip-git-repo-check \
     "$session_id"
 set -l resume_status $status
 if test $resume_status -ne 0
-    printf '\nResuming Codex session  \nError: codex exited with status %s.\n' "$resume_status"
+    printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
     exit $resume_status
 end

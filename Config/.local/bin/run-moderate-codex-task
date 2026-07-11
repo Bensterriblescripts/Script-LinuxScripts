@@ -9,23 +9,23 @@ if test (count $argv) -eq 2; and test "$argv[1]" = --inside
 else if test (count $argv) -eq 1
     set raw_directory "$argv[1]"
 else
-    printf 'Run Codex Deep Failed: argument validation\nError: expected exactly one target directory, or --inside followed by exactly one target directory.\n' >&2
+    printf 'Run Codex Moderate Failed: argument validation\nError: expected exactly one target directory, or --inside followed by exactly one target directory.\n' >&2
     exit 2
 end
 
 if test -z "$raw_directory"
-    printf 'Run Codex Deep Failed: target directory input\nError: Dolphin did not provide a target directory.\n' >&2
+    printf 'Run Codex Moderate Failed: target directory input\nError: Dolphin did not provide a target directory.\n' >&2
     exit 1
 end
 
 for dependency in realpath mktemp timeout jq
     if not type -q "$dependency"
-        printf 'Run Codex Deep Failed: dependency validation\nError: missing dependency: %s\n' "$dependency" >&2
+        printf 'Run Codex Moderate Failed: dependency validation\nError: missing dependency: %s\n' "$dependency" >&2
         exit 127
     end
 end
 if not test -x /home/ben/.local/bin/codex
-    printf 'Run Codex Deep Failed: Codex executable validation\nError: /home/ben/.local/bin/codex is not executable.\n' >&2
+    printf 'Run Codex Moderate Failed: Codex executable validation\nError: /home/ben/.local/bin/codex is not executable.\n' >&2
     exit 127
 end
 
@@ -36,16 +36,16 @@ if test $directory_status -ne 0; or test (count $directory) -ne 1; or not test -
     if test -z "$directory_error"
         set directory_error "The target directory does not exist or is not accessible: $raw_directory"
     end
-    printf 'Run Codex Deep Failed: target directory validation\nError: %s\n' "$directory_error" >&2
+    printf 'Run Codex Moderate Failed: target directory validation\nError: %s\n' "$directory_error" >&2
     exit 1
 end
 
 if not $inside
     if not type -q ghostty
-        printf 'Run Codex Deep Failed: terminal dependency validation\nError: missing dependency: ghostty\n' >&2
+        printf 'Run Codex Moderate Failed: terminal dependency validation\nError: missing dependency: ghostty\n' >&2
         exit 127
     end
-    set -l ghostty_output (ghostty --working-directory="$directory" -e /home/ben/.local/bin/run-codex-task --inside "$directory" 2>&1)
+    set -l ghostty_output (ghostty --working-directory="$directory" -e /home/ben/.local/bin/run-moderate-codex-task --inside "$directory" 2>&1)
     set -l ghostty_status $status
     if test $ghostty_status -ne 0
         set -l ghostty_error (printf '%s\n' $ghostty_output | string collect)
@@ -69,7 +69,7 @@ function cleanup --on-event fish_exit
             if test -z "$cleanup_message"
                 set cleanup_message "rm exited with status $cleanup_status."
             end
-            printf 'Temporary workspace cleanup failed.\nError: %s\n' "$cleanup_message" >&2
+            printf '\nTemporary workspace cleanup\nError: %s\n' "$cleanup_message" >&2
         else
             set -g temp_dir ""
         end
@@ -77,7 +77,7 @@ function cleanup --on-event fish_exit
 end
 
 function handle_interrupt --on-signal INT
-    printf 'Run Codex Deep interrupted.\nError: received interrupt signal.\n' >&2
+    printf 'Run Codex Moderate interrupted.\nError: received interrupt signal.\n' >&2
     exit 130
 end
 
@@ -103,16 +103,9 @@ function fail
             set -g temp_dir ""
         end
     end
-    printf '\nRun Codex Deep Failed: %s\nError: %s\n' "$stage" "$raw_error" >&2
+    printf '\n%s\nError: %s\n' "$stage" "$raw_error" >&2
     read -P "Press Enter to close."
     exit 1
-end
-
-set temp_dir (mktemp -d 2>&1)
-set -l temp_dir_status $status
-if test $temp_dir_status -ne 0; or test (count $temp_dir) -ne 1
-    set -l temp_dir_error (printf '%s\n' $temp_dir | string collect)
-    fail "Temporary workspace creation" "$temp_dir_error"
 end
 
 printf '%s\n\n' "$directory"
@@ -133,7 +126,7 @@ terminate_child() {
 }
 trap terminate_child EXIT
 trap "exit 124" TERM INT
-printf "%s\n" "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"run_codex_deep\",\"title\":\"Run Codex Deep\",\"version\":\"1.0.0\"}}}" "{\"method\":\"initialized\"}" "{\"method\":\"account/rateLimits/read\",\"id\":2}" >&"${CODEX_USAGE[1]}"
+printf "%s\n" "{\"method\":\"initialize\",\"id\":1,\"params\":{\"clientInfo\":{\"name\":\"run_codex_quick\",\"title\":\"Run Codex Moderate\",\"version\":\"1.0.0\"}}}" "{\"method\":\"initialized\"}" "{\"method\":\"account/rateLimits/read\",\"id\":2}" >&"${CODEX_USAGE[1]}"
 while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
     if jq -e ".id == 2 and (.result | type == \"object\")" <<<"$line" >/dev/null 2>&1; then
         printf "%s\n" "$line"
@@ -144,7 +137,7 @@ exit 1
 ' | jq -c 'select(type == "object" and (.result | type == "object")) | .result' 2>/dev/null)
 
 if test (count $usage_json) -ne 1
-    printf 'Usage unavailable.\n'
+    printf 'Codex usage lookup  \nError: Usage data was unavailable.\n'
 else
     set -l usage_validation (printf '%s\n' "$usage_json" | jq -er '
         def valid_number: type == "number";
@@ -164,7 +157,7 @@ else
     ' 2>&1)
     set -l usage_validation_status $status
     if test $usage_validation_status -ne 0
-        printf 'Usage unavailable.\n'
+        printf 'Codex usage lookup  \nError: Usage data was unavailable.\n'
     else
         printf '%s\n' "$usage_json" | jq -r '
         def duration:
@@ -197,100 +190,33 @@ if test -z "$task"
     fail "Task input" "Task input was empty."
 end
 
-set -l research_response "$temp_dir/research-response"
-set -l research_events "$temp_dir/research-events.jsonl"
-set -l research_codex_error "$temp_dir/research-codex.stderr"
-set -l research_tee_error "$temp_dir/research-tee.stderr"
-set -l research_jq_error "$temp_dir/research-jq.stderr"
+set -l temp_dir_result (mktemp -d 2>&1)
+set -l temp_dir_status $status
+if test $temp_dir_status -ne 0; or test (count $temp_dir_result) -ne 1
+    set -l temp_dir_error (printf '%s\n' $temp_dir_result | string collect)
+    fail "Temporary workspace creation" "$temp_dir_error"
+end
+set temp_dir "$temp_dir_result"
+
 set -l plan_response "$temp_dir/plan-response"
 set -l plan_events "$temp_dir/plan-events.jsonl"
 set -l plan_codex_error "$temp_dir/plan-codex.stderr"
 set -l plan_tee_error "$temp_dir/plan-tee.stderr"
 set -l plan_jq_error "$temp_dir/plan-jq.stderr"
-set -l implementation_response "$temp_dir/implementation-response"
-set -l implementation_events "$temp_dir/implementation-events.jsonl"
-set -l implementation_codex_error "$temp_dir/implementation-codex.stderr"
-set -l implementation_tee_error "$temp_dir/implementation-tee.stderr"
-set -l implementation_jq_error "$temp_dir/implementation-jq.stderr"
-
-set -l research_prompt (printf '%s\n%s\n%s\n%s\n' \
-    "Research the following task using web searches and read-only code analysis." \
-    "Do not modify, create, delete, or rename files, and do not run mutating commands. Provide research notes and relevant practices only; do not plan the entire implementation." \
-    "The user task is authoritative. Treat later planning and implementation as separate stages." \
-    "Task: $task" | string collect)
-
-printf 'Researching...\n\n'
-printf '%s\n' "$research_prompt" | /home/ben/.local/bin/codex --search exec \
-    --model gpt-5.6-luna \
-    --config 'model_reasoning_effort="high"' \
-    --sandbox read-only \
-    --cd "$directory" \
-    --skip-git-repo-check \
-    --json \
-    --output-last-message "$research_response" \
-    - 2>"$research_codex_error" | tee "$research_events" 2>"$research_tee_error" | jq -r '
-        select(.type == "item.completed") |
-        .item |
-        if .type == "agent_message" then "\n\(.text)\n"
-        elif .type == "command_execution" then .command // empty
-        else empty
-        end
-    ' 2>"$research_jq_error"
-set -l research_pipeline_status $pipestatus
-if test "$research_pipeline_status[1]" -ne 0
-    set -l raw_error "printf exited with status $research_pipeline_status[1]."
-    fail "Sending research prompt" "$raw_error"
-else if test "$research_pipeline_status[2]" -ne 0
-    set -l raw_error (string collect < "$research_codex_error")
-    if test -z "$raw_error"
-        set raw_error "codex exited with status $research_pipeline_status[2]."
-    end
-    fail "Research" "$raw_error"
-else if test "$research_pipeline_status[3]" -ne 0
-    set -l raw_error (string collect < "$research_tee_error")
-    if test -z "$raw_error"
-        set raw_error "tee exited with status $research_pipeline_status[3]."
-    end
-    fail "Saving research events" "$raw_error"
-else if test "$research_pipeline_status[4]" -ne 0
-    set -l raw_error (string collect < "$research_jq_error")
-    if test -z "$raw_error"
-        set raw_error "jq exited with status $research_pipeline_status[4]."
-    end
-    fail "Displaying research output" "$raw_error"
-end
-
-if not test -s "$research_response"
-    fail "Research response capture" "The research response file was empty."
-end
-
-set -l research_ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$research_events" 2>&1)
-set -l research_id_status $status
-if test $research_id_status -ne 0
-    set -l research_id_error (printf '%s\n' $research_ids | string collect)
-    fail "Research session ID extraction" "$research_id_error"
-end
-if test (count $research_ids) -ne 1; or not string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$research_ids[1]"
-    fail "Research session ID extraction" "Expected exactly one valid thread.started session ID."
-end
-set -l research_id "$research_ids[1]"
-
 set -l planning_prompt (printf '%s\n%s\n%s\n' \
-    "Using the research in this session, create a concise, thorough implementation plan for the following task." \
-    "Do not modify, create, delete, or rename files, and do not run mutating commands while planning. The user task is authoritative; avoid unrelated changes and state when no change is required." \
+    "Create a concise, thorough implementation plan for the following user task." \
+    "Do not modify, create, delete, or rename files, and do not run mutating commands while planning. Treat the user task as authoritative and avoid unrelated changes." \
     "Task: $task" | string collect)
 
 printf 'Planning...\n\n'
 printf '%s\n' "$planning_prompt" | /home/ben/.local/bin/codex exec \
-    --sandbox read-only \
-    --cd "$directory" \
-    resume \
     --model gpt-5.6-sol \
     --config 'model_reasoning_effort="high"' \
+    --sandbox read-only \
+    --cd "$directory" \
     --skip-git-repo-check \
     --json \
     --output-last-message "$plan_response" \
-    "$research_id" \
     - 2>"$plan_codex_error" | tee "$plan_events" 2>"$plan_tee_error" | jq -r '
         select(.type == "item.completed") |
         .item |
@@ -326,29 +252,32 @@ end
 if not test -s "$plan_response"
     fail "Plan response capture" "The plan response file was empty."
 end
-
 set -l planning_ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$plan_events" 2>&1)
 set -l planning_id_status $status
 if test $planning_id_status -ne 0
     set -l planning_id_error (printf '%s\n' $planning_ids | string collect)
     fail "Planning session ID extraction" "$planning_id_error"
 end
-if test (count $planning_ids) -ne 1; or test "$planning_ids[1]" != "$research_id"
-    fail "Planning session ID validation" "Planning did not resume the research session."
+if test (count $planning_ids) -ne 1; or not string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$planning_ids[1]"
+    fail "Planning session ID extraction" "Expected exactly one valid thread.started session ID."
 end
 set -l plan (string collect < "$plan_response")
 if not string match -qr '\S' -- "$plan"
     fail "Plan response capture" "The plan response contained no usable text."
 end
-
-set -l implementation_prompt (printf '%s\n%s\n%s\nUser task: %s\n\nPlan:\n%s\n' \
+set -l response_file "$temp_dir/response"
+set -l events_file "$temp_dir/events.jsonl"
+set -l codex_error_file "$temp_dir/codex.stderr"
+set -l tee_error_file "$temp_dir/tee.stderr"
+set -l jq_error_file "$temp_dir/jq.stderr"
+set -l prompt (printf '%s\n%s\n%s\nUser task: %s\n\nPlan:\n%s\n' \
     "Implement the user task in the target directory." \
     "Treat the user task as authoritative and the supplied plan as implementation guidance. Make only required changes. Perform verification and add or preserve appropriate error handling during this implementation; do not defer those checks to a later pass." \
     "Return a JSON response matching the supplied schema. Set requires_manual_input to true only if you cannot continue without an answer from the user; otherwise set it to false. The response must be a non-empty user-facing message." \
     "$task" "$plan" | string collect)
 
 printf 'Implementing...\n\n'
-printf '%s\n' "$implementation_prompt" | /home/ben/.local/bin/codex exec \
+printf '%s\n' "$prompt" | /home/ben/.local/bin/codex exec \
     --model gpt-5.6-luna \
     --config 'model_reasoning_effort="high"' \
     --sandbox workspace-write \
@@ -356,40 +285,43 @@ printf '%s\n' "$implementation_prompt" | /home/ben/.local/bin/codex exec \
     --skip-git-repo-check \
     --json \
     --output-schema /home/ben/.local/bin/codex-task-response-schema.json \
-    --output-last-message "$implementation_response" \
-    - 2>"$implementation_codex_error" | tee "$implementation_events" 2>"$implementation_tee_error" | jq -r '
+    --output-last-message "$response_file" \
+    - 2>"$codex_error_file" | tee "$events_file" 2>"$tee_error_file" | jq -r '
         select(.type == "item.completed") |
         .item |
         if .type == "agent_message" then ((try (.text | fromjson | .response) catch .text) as $message | "\n\($message)\n")
         elif .type == "command_execution" then .command // empty
         else empty
         end
-    ' 2>"$implementation_jq_error"
-set -l implementation_pipeline_status $pipestatus
-if test "$implementation_pipeline_status[1]" -ne 0
-    set -l raw_error "printf exited with status $implementation_pipeline_status[1]."
-    fail "Sending implementation prompt" "$raw_error"
-else if test "$implementation_pipeline_status[2]" -ne 0
-    set -l raw_error (string collect < "$implementation_codex_error")
+    ' 2>"$jq_error_file"
+set -l implementation_statuses $pipestatus
+if test "$implementation_statuses[1]" -ne 0
+    set -l raw_error (string collect < "$codex_error_file")
     if test -z "$raw_error"
-        set raw_error "codex exited with status $implementation_pipeline_status[2]."
+        set raw_error "printf exited with status $implementation_statuses[1]."
+    end
+    fail "Sending implementation prompt" "$raw_error"
+else if test "$implementation_statuses[2]" -ne 0
+    set -l raw_error (string collect < "$codex_error_file")
+    if test -z "$raw_error"
+        set raw_error "codex exited with status $implementation_statuses[2]."
     end
     fail "Implementation" "$raw_error"
-else if test "$implementation_pipeline_status[3]" -ne 0
-    set -l raw_error (string collect < "$implementation_tee_error")
+else if test "$implementation_statuses[3]" -ne 0
+    set -l raw_error (string collect < "$tee_error_file")
     if test -z "$raw_error"
-        set raw_error "tee exited with status $implementation_pipeline_status[3]."
+        set raw_error "tee exited with status $implementation_statuses[3]."
     end
     fail "Saving implementation events" "$raw_error"
-else if test "$implementation_pipeline_status[4]" -ne 0
-    set -l raw_error (string collect < "$implementation_jq_error")
+else if test "$implementation_statuses[4]" -ne 0
+    set -l raw_error (string collect < "$jq_error_file")
     if test -z "$raw_error"
-        set raw_error "jq exited with status $implementation_pipeline_status[4]."
+        set raw_error "jq exited with status $implementation_statuses[4]."
     end
     fail "Displaying implementation output" "$raw_error"
 end
 
-if not test -s "$implementation_response"
+if not test -s "$response_file"
     fail "Implementation response capture" "The implementation response file was empty."
 end
 
@@ -402,27 +334,29 @@ set -l response_validation (jq -er '
     elif .requires_manual_input then "manual_input"
     else "completed"
     end
-' "$implementation_response" 2>&1)
+' "$response_file" 2>&1)
 set -l response_validation_status $status
 if test $response_validation_status -ne 0
     set -l response_error (printf '%s\n' $response_validation | string collect)
     fail "Implementation response validation" "$response_error"
 end
 set -l response_kind "$response_validation[1]"
-
-set -l implementation_ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$implementation_events" 2>&1)
-set -l implementation_id_status $status
-if test $implementation_id_status -ne 0
-    set -l implementation_id_error (printf '%s\n' $implementation_ids | string collect)
-    fail "Implementation session ID extraction" "$implementation_id_error"
+if test "$response_kind" = manual_input
+    printf '\nManual input required  \n%s\n' (jq -r '.response' "$response_file")
+else
+    printf '\nTask completed  \n%s\n' (jq -r '.response' "$response_file")
 end
-if test (count $implementation_ids) -ne 1; or not string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$implementation_ids[1]"
+
+set -l session_ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$events_file" 2>&1)
+set -l session_id_status $status
+if test $session_id_status -ne 0
+    set -l session_id_error (printf '%s\n' $session_ids | string collect)
+    fail "Implementation session ID extraction" "$session_id_error"
+end
+if test (count $session_ids) -ne 1; or not string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$session_ids[1]"
     fail "Implementation session ID extraction" "Expected exactly one valid thread.started session ID."
 end
-set -l implementation_id "$implementation_ids[1]"
-if test "$implementation_id" = "$research_id"
-    fail "Implementation session ID validation" "Implementation did not start a separate session."
-end
+set -l session_id "$session_ids[1]"
 
 if test "$response_kind" = manual_input
     set -l cleanup_result (rm -rf -- "$temp_dir" 2>&1)
@@ -442,7 +376,7 @@ if test "$response_kind" = manual_input
         --sandbox workspace-write \
         --cd "$directory" \
         --skip-git-repo-check \
-        "$implementation_id"
+        "$session_id"
     set -l resume_status $status
     if test $resume_status -ne 0
         printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
@@ -458,7 +392,7 @@ if test $cleanup_status -ne 0
     if test -z "$cleanup_error"
         set cleanup_error "rm exited with status $cleanup_status."
     end
-    fail "Temporary workspace cleanup" "$cleanup_error"
+    fail "Removing temporary workspace" "$cleanup_error"
 end
 set -g temp_dir ""
 clear
@@ -468,7 +402,7 @@ clear
     --sandbox workspace-write \
     --cd "$directory" \
     --skip-git-repo-check \
-    "$implementation_id"
+    "$session_id"
 set -l resume_status $status
 if test $resume_status -ne 0
     printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
