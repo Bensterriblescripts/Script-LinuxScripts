@@ -3,6 +3,13 @@
 set -l inside false
 set -l raw_directory ""
 
+function keep_terminal_open
+    set -l exit_status "$argv[1]"
+    printf '\nTerminal kept open for inspection. Type `exit` or press Ctrl-D to close it.\n' >&2
+    /usr/bin/fish -i
+    exit $exit_status
+end
+
 if test (count $argv) -eq 2; and test "$argv[1]" = --inside
     set inside true
     set raw_directory "$argv[2]"
@@ -10,22 +17,46 @@ else if test (count $argv) -eq 1
     set raw_directory "$argv[1]"
 else
     printf 'Run Codex Deep Failed: argument validation\nError: expected exactly one target directory, or --inside followed by exactly one target directory.\n' >&2
+    if type -q kdialog
+        kdialog --title "Run Codex Deep Failed" --error "Dolphin did not provide a target directory."
+    end
+    if $inside
+        keep_terminal_open 2
+    end
     exit 2
 end
 
 if test -z "$raw_directory"
     printf 'Run Codex Deep Failed: target directory input\nError: Dolphin did not provide a target directory.\n' >&2
+    if type -q kdialog
+        kdialog --title "Run Codex Deep Failed" --error "Dolphin did not provide a target directory."
+    end
+    if $inside
+        keep_terminal_open 1
+    end
     exit 1
 end
 
 for dependency in realpath mktemp timeout jq
     if not type -q "$dependency"
         printf 'Run Codex Deep Failed: dependency validation\nError: missing dependency: %s\n' "$dependency" >&2
+        if type -q kdialog
+            kdialog --title "Run Codex Deep Failed" --error "Missing dependency: $dependency"
+        end
+        if $inside
+            keep_terminal_open 127
+        end
         exit 127
     end
 end
 if not test -x /home/ben/.local/bin/codex
     printf 'Run Codex Deep Failed: Codex executable validation\nError: /home/ben/.local/bin/codex is not executable.\n' >&2
+    if type -q kdialog
+        kdialog --title "Run Codex Deep Failed" --error "/home/ben/.local/bin/codex is not executable."
+    end
+    if $inside
+        keep_terminal_open 127
+    end
     exit 127
 end
 
@@ -37,12 +68,21 @@ if test $directory_status -ne 0; or test (count $directory) -ne 1; or not test -
         set directory_error "The target directory does not exist or is not accessible: $raw_directory"
     end
     printf 'Run Codex Deep Failed: target directory validation\nError: %s\n' "$directory_error" >&2
+    if type -q kdialog
+        kdialog --title "Run Codex Deep Failed" --error "$directory_error"
+    end
+    if $inside
+        keep_terminal_open 1
+    end
     exit 1
 end
 
 if not $inside
     if not type -q ghostty
         printf 'Run Codex Deep Failed: terminal dependency validation\nError: missing dependency: ghostty\n' >&2
+        if type -q kdialog
+            kdialog --title "Run Codex Deep Failed" --error "Missing dependency: ghostty"
+        end
         exit 127
     end
     set -l ghostty_output (ghostty --working-directory="$directory" -e /home/ben/.local/bin/run-codex-task --inside "$directory" 2>&1)
@@ -53,15 +93,19 @@ if not $inside
             set ghostty_error "ghostty exited with status $ghostty_status."
         end
         printf 'Opening terminal failed.\nError: %s\n' "$ghostty_error" >&2
+        if type -q kdialog
+            kdialog --title "Run Codex Deep Failed" --error "$ghostty_error"
+        end
         exit $ghostty_status
     end
     exit 0
 end
 
 set -g temp_dir ""
+set -g preserve_temp_dir false
 
 function cleanup --on-event fish_exit
-    if test -n "$temp_dir"
+    if test -n "$temp_dir"; and not $preserve_temp_dir
         set -l cleanup_error (rm -rf -- "$temp_dir" 2>&1)
         set -l cleanup_status $status
         if test $cleanup_status -ne 0
@@ -77,11 +121,18 @@ function cleanup --on-event fish_exit
 end
 
 function handle_interrupt --on-signal INT
+    set -g preserve_temp_dir true
     printf 'Run Codex Deep interrupted.\nError: received interrupt signal.\n' >&2
-    exit 130
+    if test -n "$temp_dir"
+        printf 'Failure artifacts preserved at: %s\n' "$temp_dir" >&2
+    end
+    printf '\nTerminal kept open for inspection. Type `exit` or press Ctrl-D to close it.\n' >&2
+    /usr/bin/fish -i
+    exec /usr/bin/fish -c 'exit 130'
 end
 
 function fail
+    set -g preserve_temp_dir true
     set -l stage "$argv[1]"
     set -l raw_error ""
     if test (count $argv) -gt 1
@@ -90,25 +141,46 @@ function fail
     if test -z "$raw_error"
         set raw_error "Command exited unsuccessfully."
     end
+    printf '\nRun Codex Deep Failed: %s\nError: %s\n' "$stage" "$raw_error" >&2
     if test -n "$temp_dir"
-        set -l cleanup_error (rm -rf -- "$temp_dir" 2>&1)
-        set -l cleanup_status $status
-        if test $cleanup_status -ne 0
-            set -l cleanup_message (printf '%s\n' $cleanup_error | string collect)
-            if test -z "$cleanup_message"
-                set cleanup_message "rm exited with status $cleanup_status."
+        printf 'Failure artifacts preserved at: %s\n' "$temp_dir" >&2
+    end
+    set -l failed_session_id ""
+    for events in "$temp_dir/error-handling-events.jsonl" "$temp_dir/implementation-events.jsonl" "$temp_dir/events.jsonl" "$temp_dir/plan-events.jsonl" "$temp_dir/research-events.jsonl"
+        if test -s "$events"
+            set -l ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$events" 2>/dev/null)
+            if test (count $ids) -gt 0; and string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$ids[-1]"
+                set failed_session_id "$ids[-1]"
+                break
             end
-            set raw_error (printf '%s\nTemporary workspace cleanup failed: %s' "$raw_error" "$cleanup_message" | string collect)
-        else
-            set -g temp_dir ""
         end
     end
-    printf '\nRun Codex Deep Failed: %s\nError: %s\n' "$stage" "$raw_error" >&2
-    read -P "Press Enter to close."
+    if test -z "$failed_session_id"
+        printf 'No Codex session is available.\n' >&2
+        keep_terminal_open 1
+    end
+    read -P "Press Enter to open the Codex TUI, or Ctrl-C to close."
+    /home/ben/.local/bin/codex resume \
+        --model gpt-5.6-sol \
+        --config 'model_reasoning_effort="high"' \
+        --sandbox workspace-write \
+        --cd "$directory" \
+        "$failed_session_id"
+    set -l resume_status $status
+    if test $resume_status -ne 0
+        printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
+        keep_terminal_open $resume_status
+    end
     exit 1
 end
 
-set temp_dir (mktemp -d 2>&1)
+set -l state_dir ""(set -q XDG_STATE_HOME; and printf '%s' "$XDG_STATE_HOME"; or printf '%s' "$HOME/.local/state")"/codex-service-menu"
+set -l state_dir_error (mkdir -p -- "$state_dir" 2>&1)
+set -l state_dir_status $status
+if test $state_dir_status -ne 0
+    fail "Failure artifact directory creation" (printf '%s\n' $state_dir_error | string collect)
+end
+set temp_dir (mktemp -d --tmpdir="$state_dir" deep.XXXXXXXXXX 2>&1)
 set -l temp_dir_status $status
 if test $temp_dir_status -ne 0; or test (count $temp_dir) -ne 1
     set -l temp_dir_error (printf '%s\n' $temp_dir | string collect)
@@ -212,6 +284,11 @@ set -l implementation_events "$temp_dir/implementation-events.jsonl"
 set -l implementation_codex_error "$temp_dir/implementation-codex.stderr"
 set -l implementation_tee_error "$temp_dir/implementation-tee.stderr"
 set -l implementation_jq_error "$temp_dir/implementation-jq.stderr"
+set -l error_handling_response "$temp_dir/error-handling-response"
+set -l error_handling_events "$temp_dir/error-handling-events.jsonl"
+set -l error_handling_codex_error "$temp_dir/error-handling-codex.stderr"
+set -l error_handling_tee_error "$temp_dir/error-handling-tee.stderr"
+set -l error_handling_jq_error "$temp_dir/error-handling-jq.stderr"
 
 set -l research_prompt (printf '%s\n%s\n%s\n%s\n' \
     "Research the following task using web searches and read-only code analysis." \
@@ -285,7 +362,7 @@ printf '%s\n' "$planning_prompt" | /home/ben/.local/bin/codex exec \
     --sandbox read-only \
     --cd "$directory" \
     resume \
-    --model gpt-5.6-sol \
+    --model gpt-5.6-luna \
     --config 'model_reasoning_effort="high"' \
     --skip-git-repo-check \
     --json \
@@ -344,12 +421,12 @@ end
 set -l implementation_prompt (printf '%s\n%s\n%s\nUser task: %s\n\nPlan:\n%s\n' \
     "Implement the user task in the target directory." \
     "Treat the user task as authoritative and the supplied plan as implementation guidance. Make only required changes. Perform verification and add or preserve appropriate error handling during this implementation; do not defer those checks to a later pass." \
-    "Return a JSON response matching the supplied schema. Set requires_manual_input to true only if you cannot continue without an answer from the user; otherwise set it to false. The response must be a non-empty user-facing message." \
+    "Return a JSON response matching the supplied schema. The response must be a non-empty user-facing message." \
     "$task" "$plan" | string collect)
 
 printf 'Implementing...\n\n'
 printf '%s\n' "$implementation_prompt" | /home/ben/.local/bin/codex exec \
-    --model gpt-5.6-luna \
+    --model gpt-5.6-sol \
     --config 'model_reasoning_effort="high"' \
     --sandbox workspace-write \
     --cd "$directory" \
@@ -395,12 +472,10 @@ end
 
 set -l response_validation (jq -er '
     if type != "object" then error("response must be a JSON object")
-    elif (keys_unsorted | sort) != ["requires_manual_input", "response"] then error("response has unexpected or missing fields")
-    elif (.requires_manual_input | type) != "boolean" then error("requires_manual_input must be boolean")
+    elif (keys_unsorted | sort) != ["response"] then error("response has unexpected or missing fields")
     elif (.response | type) != "string" then error("response must be a string")
-    elif ((.response | test("\\S")) | not) then error("response must be non-empty")
-    elif .requires_manual_input then "manual_input"
-    else "completed"
+    elif ((.response | test("[^[:space:]]")) | not) then error("response must be non-empty")
+    else "valid"
     end
 ' "$implementation_response" 2>&1)
 set -l response_validation_status $status
@@ -408,8 +483,6 @@ if test $response_validation_status -ne 0
     set -l response_error (printf '%s\n' $response_validation | string collect)
     fail "Implementation response validation" "$response_error"
 end
-set -l response_kind "$response_validation[1]"
-
 set -l implementation_ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$implementation_events" 2>&1)
 set -l implementation_id_status $status
 if test $implementation_id_status -ne 0
@@ -424,31 +497,81 @@ if test "$implementation_id" = "$research_id"
     fail "Implementation session ID validation" "Implementation did not start a separate session."
 end
 
-if test "$response_kind" = manual_input
-    set -l cleanup_result (rm -rf -- "$temp_dir" 2>&1)
-    set -l cleanup_status $status
-    if test $cleanup_status -ne 0
-        set -l cleanup_error (printf '%s\n' $cleanup_result | string collect)
-        if test -z "$cleanup_error"
-            set cleanup_error "rm exited with status $cleanup_status."
+set -l error_handling_prompt (printf '%s\n%s\n%s\n' \
+    "Add in error handling where there isn't any currently and ensure each error looks like the following." \
+    "{dynamic error based on location and context}" \
+    "Error: {rawerrorstring/s}" | string collect)
+
+printf 'Checking error handling...\n\n'
+printf '%s\n' "$error_handling_prompt" | /home/ben/.local/bin/codex exec \
+    --model gpt-5.6-sol \
+    --config 'model_reasoning_effort="high"' \
+    --sandbox workspace-write \
+    --cd "$directory" \
+    resume \
+    --skip-git-repo-check \
+    --json \
+    --output-schema /home/ben/.local/bin/codex-task-response-schema.json \
+    --output-last-message "$error_handling_response" \
+    "$implementation_id" \
+    - 2>"$error_handling_codex_error" | tee "$error_handling_events" 2>"$error_handling_tee_error" | jq -r '
+        select(.type == "item.completed") |
+        .item |
+        if .type == "agent_message" then ((try (.text | fromjson | .response) catch .text) as $message | "\n\($message)\n")
+        elif .type == "command_execution" then .command // empty
+        else empty
         end
-        fail "Temporary workspace cleanup" "$cleanup_error"
+    ' 2>"$error_handling_jq_error"
+set -l error_handling_pipeline_status $pipestatus
+if test "$error_handling_pipeline_status[1]" -ne 0
+    set -l raw_error "printf exited with status $error_handling_pipeline_status[1]."
+    fail "Sending error-handling prompt" "$raw_error"
+else if test "$error_handling_pipeline_status[2]" -ne 0
+    set -l raw_error (string collect < "$error_handling_codex_error")
+    if test -z "$raw_error"
+        set raw_error "codex exited with status $error_handling_pipeline_status[2]."
     end
-    set -g temp_dir ""
-    clear
-    /home/ben/.local/bin/codex resume \
-        --model gpt-5.6-luna \
-        --config 'model_reasoning_effort="high"' \
-        --sandbox workspace-write \
-        --cd "$directory" \
-        --skip-git-repo-check \
-        "$implementation_id"
-    set -l resume_status $status
-    if test $resume_status -ne 0
-        printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
-        exit $resume_status
+    fail "Error-handling pass" "$raw_error"
+else if test "$error_handling_pipeline_status[3]" -ne 0
+    set -l raw_error (string collect < "$error_handling_tee_error")
+    if test -z "$raw_error"
+        set raw_error "tee exited with status $error_handling_pipeline_status[3]."
     end
-    exit 0
+    fail "Saving error-handling events" "$raw_error"
+else if test "$error_handling_pipeline_status[4]" -ne 0
+    set -l raw_error (string collect < "$error_handling_jq_error")
+    if test -z "$raw_error"
+        set raw_error "jq exited with status $error_handling_pipeline_status[4]."
+    end
+    fail "Displaying error-handling output" "$raw_error"
+end
+
+if not test -s "$error_handling_response"
+    fail "Error-handling response capture" "The error-handling response file was empty."
+end
+
+set -l error_handling_response_validation (jq -er '
+    if type != "object" then error("response must be a JSON object")
+    elif (keys_unsorted | sort) != ["response"] then error("response has unexpected or missing fields")
+    elif (.response | type) != "string" then error("response must be a string")
+    elif ((.response | test("[^[:space:]]")) | not) then error("response must be non-empty")
+    else "valid"
+    end
+' "$error_handling_response" 2>&1)
+set -l error_handling_response_validation_status $status
+if test $error_handling_response_validation_status -ne 0
+    set -l error_handling_response_error (printf '%s\n' $error_handling_response_validation | string collect)
+    fail "Error-handling response validation" "$error_handling_response_error"
+end
+
+set -l error_handling_ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$error_handling_events" 2>&1)
+set -l error_handling_id_status $status
+if test $error_handling_id_status -ne 0
+    set -l error_handling_id_error (printf '%s\n' $error_handling_ids | string collect)
+    fail "Error-handling session ID extraction" "$error_handling_id_error"
+end
+if test (count $error_handling_ids) -ne 1; or test "$error_handling_ids[1]" != "$implementation_id"
+    fail "Error-handling session ID validation" "The error-handling pass did not resume the implementation session."
 end
 
 set -l cleanup_result (rm -rf -- "$temp_dir" 2>&1)
@@ -463,14 +586,14 @@ end
 set -g temp_dir ""
 clear
 /home/ben/.local/bin/codex resume \
-    --model gpt-5.6-luna \
+    --model gpt-5.6-sol \
     --config 'model_reasoning_effort="high"' \
     --sandbox workspace-write \
     --cd "$directory" \
-    --skip-git-repo-check \
     "$implementation_id"
 set -l resume_status $status
 if test $resume_status -ne 0
     printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
-    exit $resume_status
+    keep_terminal_open $resume_status
 end
+exit 0

@@ -13,7 +13,16 @@ if [ ! -d "$dir" ]; then
     exit 1
 fi
 
+if ! command -v ghostty >/dev/null 2>&1; then
+    kdialog --title "Open Here Failed" --error "Missing dependency: ghostty"
+    exit 127
+fi
+
 if [ "$mode" = codex ]; then
+    if [ ! -x /home/ben/.local/bin/codex ]; then
+        kdialog --title "Open Here Failed" --error "/home/ben/.local/bin/codex is not executable."
+        exit 127
+    fi
     exec ghostty --working-directory="$dir" -e /home/ben/.local/bin/codex
 fi
 

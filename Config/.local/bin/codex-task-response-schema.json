@@ -1,9 +1,6 @@
 {
   "type": "object",
   "properties": {
-    "requires_manual_input": {
-      "type": "boolean"
-    },
     "response": {
       "type": "string",
       "minLength": 1,
@@ -11,7 +8,6 @@
     }
   },
   "required": [
-    "requires_manual_input",
     "response"
   ],
   "additionalProperties": false

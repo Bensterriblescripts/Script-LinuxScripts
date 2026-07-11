@@ -1,4 +1,5 @@
 Arch Linux. Fish Shell.
-Be concise. Ask if ambiguous.
-Prefer inlining logic into longer functions over small abstractions or functions.
+Be concise.
+Do not use git or any version-control data.
+Prefer inlining logic into longer functions if a function will only be called once.
 Avoid comments unless requested.
