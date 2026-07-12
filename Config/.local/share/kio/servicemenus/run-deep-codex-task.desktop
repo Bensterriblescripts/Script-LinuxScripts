@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Priority=TopLevel
+MimeType=inode/directory
+Actions=RunCodexTask
+
+[Desktop Action RunCodexTask]
+Name=Run Codex Deep
+Icon=utilities-terminal
+Exec=/home/ben/.local/bin/run-deep-codex-task %f

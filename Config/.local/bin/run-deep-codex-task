@@ -5,9 +5,17 @@ set -l raw_directory ""
 
 function keep_terminal_open
     set -l exit_status "$argv[1]"
-    printf '\nTerminal kept open for inspection. Type `exit` or press Ctrl-D to close it.\n' >&2
-    /usr/bin/fish -i
-    exit $exit_status
+    printf '\nTerminal kept open for inspection. Press Ctrl-C to close it.\n' >&2
+    while true
+        /usr/bin/fish -i -C 'function close_terminal --on-signal INT; exit 130; end'
+        set -l terminal_status $status
+        if test $terminal_status -eq 130
+            exit $exit_status
+        else if test $terminal_status -ne 0
+            printf 'Run Codex Deep Failed: keeping terminal open\nError: fish exited with status %s.\n' "$terminal_status" >&2
+            exit $exit_status
+        end
+    end
 end
 
 if test (count $argv) -eq 2; and test "$argv[1]" = --inside
@@ -85,14 +93,14 @@ if not $inside
         end
         exit 127
     end
-    set -l ghostty_output (ghostty --working-directory="$directory" -e /home/ben/.local/bin/run-codex-task --inside "$directory" 2>&1)
+    set -l ghostty_output (ghostty --working-directory="$directory" -e /home/ben/.local/bin/run-codex-task-deep --inside "$directory" 2>&1)
     set -l ghostty_status $status
     if test $ghostty_status -ne 0
         set -l ghostty_error (printf '%s\n' $ghostty_output | string collect)
         if test -z "$ghostty_error"
             set ghostty_error "ghostty exited with status $ghostty_status."
         end
-        printf 'Opening terminal failed.\nError: %s\n' "$ghostty_error" >&2
+        printf 'Run Codex Deep Failed: opening terminal\nError: %s\n' "$ghostty_error" >&2
         if type -q kdialog
             kdialog --title "Run Codex Deep Failed" --error "$ghostty_error"
         end
@@ -103,6 +111,7 @@ end
 
 set -g temp_dir ""
 set -g preserve_temp_dir false
+set -g recovery_directory "$directory"
 
 function cleanup --on-event fish_exit
     if test -n "$temp_dir"; and not $preserve_temp_dir
@@ -113,7 +122,7 @@ function cleanup --on-event fish_exit
             if test -z "$cleanup_message"
                 set cleanup_message "rm exited with status $cleanup_status."
             end
-            printf 'Temporary workspace cleanup failed.\nError: %s\n' "$cleanup_message" >&2
+            printf 'Run Codex Deep Failed: temporary workspace cleanup\nError: %s\n' "$cleanup_message" >&2
         else
             set -g temp_dir ""
         end
@@ -126,9 +135,7 @@ function handle_interrupt --on-signal INT
     if test -n "$temp_dir"
         printf 'Failure artifacts preserved at: %s\n' "$temp_dir" >&2
     end
-    printf '\nTerminal kept open for inspection. Type `exit` or press Ctrl-D to close it.\n' >&2
-    /usr/bin/fish -i
-    exec /usr/bin/fish -c 'exit 130'
+    exit 130
 end
 
 function fail
@@ -146,32 +153,48 @@ function fail
         printf 'Failure artifacts preserved at: %s\n' "$temp_dir" >&2
     end
     set -l failed_session_id ""
-    for events in "$temp_dir/error-handling-events.jsonl" "$temp_dir/implementation-events.jsonl" "$temp_dir/events.jsonl" "$temp_dir/plan-events.jsonl" "$temp_dir/research-events.jsonl"
-        if test -s "$events"
-            set -l ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$events" 2>/dev/null)
-            if test (count $ids) -gt 0; and string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$ids[-1]"
-                set failed_session_id "$ids[-1]"
-                break
+    if test -n "$temp_dir"
+        for events in "$temp_dir/error-handling-events.jsonl" "$temp_dir/implementation-events.jsonl" "$temp_dir/events.jsonl" "$temp_dir/plan-events.jsonl" "$temp_dir/research-events.jsonl"
+            if test -s "$events"
+                set -l ids (jq -r 'select(type == "object" and .type == "thread.started" and (.thread_id | type) == "string") | .thread_id' "$events" 2>&1)
+                set -l ids_status $status
+                if test $ids_status -ne 0
+                    set -l ids_error (printf '%s\n' $ids | string collect)
+                    if test -z "$ids_error"
+                        set ids_error "jq exited with status $ids_status."
+                    end
+                    printf 'Run Codex Deep Failed: recovery session ID extraction\nError: %s\n' "$ids_error" >&2
+                end
+                if test $ids_status -eq 0; and test (count $ids) -gt 0; and string match -qr '^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$' -- "$ids[-1]"
+                    set failed_session_id "$ids[-1]"
+                    break
+                end
             end
         end
     end
     if test -z "$failed_session_id"
-        printf 'No Codex session is available.\n' >&2
+        printf 'Run Codex Deep Failed: session recovery\nError: no Codex session is available.\n' >&2
         keep_terminal_open 1
     end
-    read -P "Press Enter to open the Codex TUI, or Ctrl-C to close."
+    if test -z "$recovery_directory"; or not test -d "$recovery_directory"; or not test -r "$recovery_directory"; or not test -x "$recovery_directory"
+        printf 'Run Codex Deep Failed: resuming Codex session\nError: the validated target directory is unavailable.\n' >&2
+        keep_terminal_open 1
+    end
     /home/ben/.local/bin/codex resume \
         --model gpt-5.6-sol \
         --config 'model_reasoning_effort="high"' \
         --sandbox workspace-write \
-        --cd "$directory" \
+        --cd "$recovery_directory" \
         "$failed_session_id"
     set -l resume_status $status
+    if test $resume_status -eq 130
+        exit 130
+    end
     if test $resume_status -ne 0
-        printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
+        printf 'Run Codex Deep Failed: resuming Codex session\nError: codex exited with status %s.\n' "$resume_status" >&2
         keep_terminal_open $resume_status
     end
-    exit 1
+    keep_terminal_open 0
 end
 
 set -l state_dir ""(set -q XDG_STATE_HOME; and printf '%s' "$XDG_STATE_HOME"; or printf '%s' "$HOME/.local/state")"/codex-service-menu"
@@ -180,12 +203,13 @@ set -l state_dir_status $status
 if test $state_dir_status -ne 0
     fail "Failure artifact directory creation" (printf '%s\n' $state_dir_error | string collect)
 end
-set temp_dir (mktemp -d --tmpdir="$state_dir" deep.XXXXXXXXXX 2>&1)
+set -l temp_dir_result (mktemp -d --tmpdir="$state_dir" deep.XXXXXXXXXX 2>&1)
 set -l temp_dir_status $status
-if test $temp_dir_status -ne 0; or test (count $temp_dir) -ne 1
-    set -l temp_dir_error (printf '%s\n' $temp_dir | string collect)
+if test $temp_dir_status -ne 0; or test (count $temp_dir_result) -ne 1
+    set -l temp_dir_error (printf '%s\n' $temp_dir_result | string collect)
     fail "Temporary workspace creation" "$temp_dir_error"
 end
+set temp_dir "$temp_dir_result"
 
 printf '%s\n\n' "$directory"
 set -l usage_json (timeout --kill-after=2s 10s bash -c '
@@ -214,9 +238,17 @@ while IFS= read -r -u "${CODEX_USAGE[0]}" line; do
 done
 exit 1
 ' | jq -c 'select(type == "object" and (.result | type == "object")) | .result' 2>/dev/null)
+set -l usage_pipeline_status $pipestatus
 
-if test (count $usage_json) -ne 1
-    printf 'Usage unavailable.\n'
+if test "$usage_pipeline_status[1]" -ne 0; or test "$usage_pipeline_status[2]" -ne 0; or test (count $usage_json) -ne 1
+    if test "$usage_pipeline_status[1]" -ne 0
+        set -l usage_error "rate-limit request exited with status $usage_pipeline_status[1]."
+    else if test "$usage_pipeline_status[2]" -ne 0
+        set -l usage_error "jq exited with status $usage_pipeline_status[2]."
+    else
+        set -l usage_error "expected exactly one rate-limit response; received "(count $usage_json)"."
+    end
+    printf 'Run Codex Deep Failed: usage lookup\nError: %s\n' "$usage_error"
 else
     set -l usage_validation (printf '%s\n' "$usage_json" | jq -er '
         def valid_number: type == "number";
@@ -236,9 +268,13 @@ else
     ' 2>&1)
     set -l usage_validation_status $status
     if test $usage_validation_status -ne 0
-        printf 'Usage unavailable.\n'
+        set -l usage_error (printf '%s\n' $usage_validation | string collect)
+        if test -z "$usage_error"
+            set usage_error "jq exited with status $usage_validation_status."
+        end
+        printf 'Run Codex Deep Failed: usage response validation\nError: %s\n' "$usage_error"
     else
-        printf '%s\n' "$usage_json" | jq -r '
+        set -l usage_output (printf '%s\n' "$usage_json" | jq -r '
         def duration:
             if . >= 1440 then "\(. / 1440) days"
             elif . >= 60 then "\(. / 60) hours"
@@ -254,7 +290,17 @@ else
         if .rateLimitResetCredits == null then empty
         else "Reset credits: \(.rateLimitResetCredits.availableCount)"
         end
-        '
+        ' 2>&1)
+        set -l usage_display_status $pipestatus
+        if test "$usage_display_status[1]" -ne 0; or test "$usage_display_status[2]" -ne 0
+            set -l usage_error (printf '%s\n' $usage_output | string collect)
+            if test -z "$usage_error"
+                set usage_error "usage rendering pipeline exited with statuses $usage_display_status."
+            end
+            printf 'Run Codex Deep Failed: displaying usage\nError: %s\n' "$usage_error"
+        else
+            printf '%s\n' $usage_output
+        end
     end
 end
 printf '\n'
@@ -413,7 +459,15 @@ end
 if test (count $planning_ids) -ne 1; or test "$planning_ids[1]" != "$research_id"
     fail "Planning session ID validation" "Planning did not resume the research session."
 end
-set -l plan (string collect < "$plan_response")
+set -l plan (string collect < "$plan_response" 2>&1)
+set -l plan_read_status $status
+if test $plan_read_status -ne 0
+    set -l plan_error (printf '%s\n' $plan | string collect)
+    if test -z "$plan_error"
+        set plan_error "string collect exited with status $plan_read_status."
+    end
+    fail "Reading plan response" "$plan_error"
+end
 if not string match -qr '\S' -- "$plan"
     fail "Plan response capture" "The plan response contained no usable text."
 end
@@ -584,7 +638,15 @@ if test $cleanup_status -ne 0
     fail "Temporary workspace cleanup" "$cleanup_error"
 end
 set -g temp_dir ""
-clear
+set -l clear_error (clear 2>&1)
+set -l clear_status $status
+if test $clear_status -ne 0
+    set -l raw_error (printf '%s\n' $clear_error | string collect)
+    if test -z "$raw_error"
+        set raw_error "clear exited with status $clear_status."
+    end
+    printf 'Run Codex Deep Failed: clearing terminal\nError: %s\n' "$raw_error" >&2
+end
 /home/ben/.local/bin/codex resume \
     --model gpt-5.6-sol \
     --config 'model_reasoning_effort="high"' \
@@ -593,7 +655,7 @@ clear
     "$implementation_id"
 set -l resume_status $status
 if test $resume_status -ne 0
-    printf 'Resuming Codex session failed.\nError: codex exited with status %s.\n' "$resume_status" >&2
+    printf 'Run Codex Deep Failed: resuming Codex session\nError: codex exited with status %s.\n' "$resume_status" >&2
     keep_terminal_open $resume_status
 end
 exit 0
