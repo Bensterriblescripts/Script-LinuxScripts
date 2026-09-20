@@ -1,0 +1,193 @@
+#!/usr/bin/python3
+"""Open Dolphin directories in the newest eligible Ghostty *window*.
+
+Requires the local WindowRouting1 IPC extension. Window age is independent
+of focus, tab age, and process age. No daemon or persistent window registry.
+"""
+import argparse
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+from gi.repository import Gio, GLib
+
+INTERFACE = 'com.mitchellh.ghostty.WindowRouting1'
+OBJECT = '/com/mitchellh/ghostty/WindowRouting'
+GHOSTTY = '/usr/bin/ghostty'
+
+
+@dataclass(frozen=True)
+class Process:
+    pid: int
+    parent: int
+    name: str
+
+
+@dataclass(frozen=True)
+class Window:
+    destination: str
+    pid: int
+    id: int
+    created: int
+    surfaces: frozenset
+
+
+def processes():
+    result = {}
+    for path in Path('/proc').iterdir():
+        if not path.name.isdecimal():
+            continue
+        try:
+            if path.stat().st_uid != os.getuid():
+                continue
+            stat = (path / 'stat').read_text()
+            name = stat[stat.index('(') + 1:stat.rindex(')')]
+            parent = int(stat[stat.rindex(')') + 2:].split()[1])
+            pid = int(path.name)
+            result[pid] = Process(pid, parent, name)
+        except (OSError, ValueError, IndexError):
+            continue
+    return result
+
+
+def ghostty_parent(pid, table):
+    seen = set()
+    while pid in table and pid not in seen:
+        seen.add(pid)
+        process = table[pid]
+        if process.name == 'ghostty':
+            return pid
+        pid = process.parent
+    return None
+
+
+def pi_surfaces(table):
+    result = set()
+    for process in table.values():
+        if process.name != 'pi':
+            continue
+        parent = ghostty_parent(process.parent, table)
+        if parent is None:
+            continue
+        try:
+            entries = Path(f'/proc/{process.pid}/environ').read_bytes().split(b'\0')
+            env = dict(entry.split(b'=', 1) for entry in entries if b'=' in entry)
+            surface = int(env.get(b'GHOSTTY_SURFACE_ID', b'0'), 0)
+            if surface:
+                result.add((parent, surface))
+        except (OSError, ValueError):
+            continue
+    return result
+
+
+def call(bus, destination, interface, method, params=None, path=OBJECT):
+    return bus.call_sync(destination, path, interface, method, params, None,
+                         Gio.DBusCallFlags.NO_AUTO_START, 3000, None)
+
+
+def snapshot(bus, table):
+    connections = json.loads(subprocess.run(
+        ['busctl', '--user', '--json=short', 'list'], check=True,
+        capture_output=True, text=True, timeout=5).stdout)
+    windows, endpoints, unsupported = [], [], set()
+    for entry in connections:
+        pid, destination = entry.get('pid'), entry['name']
+        if not destination.startswith(':') or pid not in table or table[pid].name != 'ghostty':
+            continue
+        try:
+            rows = call(bus, destination, INTERFACE, 'ListWindows').unpack()[0]
+        except GLib.Error:
+            unsupported.add(pid)
+            continue
+        endpoints.append(destination)
+        for ident, created, surfaces in rows:
+            windows.append(Window(destination, pid, ident, created, frozenset(surfaces)))
+    return windows, endpoints, unsupported
+
+
+def candidates(mode, windows, pi):
+    selected = [window for window in windows
+                if any((window.pid, surface) in pi for surface in window.surfaces)
+                == (mode == 'pi')]
+    return sorted(selected, key=lambda w: (w.created, w.destination, w.id), reverse=True)
+
+
+def open_tab(bus, window, arguments):
+    call(bus, window.destination, INTERFACE, 'NewTab',
+         GLib.Variant('(utas)', (window.id, window.created, arguments)))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('mode', choices=['pi', 'terminal'])
+    parser.add_argument('directory', type=Path)
+    args = parser.parse_args()
+    directory = args.directory.resolve()
+    if not directory.is_dir():
+        parser.error(f'Not a directory: {directory}')
+    arguments = [f'--working-directory={directory}']
+    if args.mode == 'pi':
+        arguments += ['-e', str(Path.home() / '.local/bin/pi')]
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    for attempt in range(3):
+        table = processes()
+        pi = pi_surfaces(table)
+        windows, endpoints, unsupported = snapshot(bus, table)
+        selected = candidates(args.mode, windows, pi)
+        if args.dry_run:
+            if unsupported:
+                print(f'Ignoring unpatched/unavailable Ghostty PIDs: {sorted(unsupported)}')
+            if selected:
+                window = selected[0]
+                age = (time.monotonic_ns() // 1000 - window.created) / 1_000_000
+                print(f'Window {window.id}, PID {window.pid}, age {age:.3f}s, '
+                      f'created {window.created}, D-Bus {window.destination}')
+            else:
+                print('No eligible window; would create a new window.')
+            return
+        if not selected:
+            break
+        try:
+            open_tab(bus, selected[0], arguments)
+            return
+        except GLib.Error as error:
+            name = Gio.DBusError.get_remote_error(error) or ''
+            if name not in (INTERFACE + '.WindowNotFound',
+                            'org.freedesktop.DBus.Error.NameHasNoOwner',
+                            'org.freedesktop.DBus.Error.ServiceUnknown'):
+                # Do not create a duplicate tab after an ambiguous timeout.
+                raise
+            # Re-query after a window/process closes; never fall back to focus.
+    if endpoints:
+        destination = endpoints[0]
+        # GTK application's object path depends on --class; discover it.
+        paths = subprocess.run(['busctl', '--user', '--list', 'tree', destination],
+                               check=True, capture_output=True, text=True, timeout=5).stdout.splitlines()
+        for path in paths:
+            path = path.strip()
+            try:
+                call(bus, destination, 'org.gtk.Actions', 'Describe',
+                     GLib.Variant('(s)', ('new-window-command',)), path=path)
+            except GLib.Error:
+                continue
+            call(bus, destination, 'org.gtk.Actions', 'Activate',
+                 GLib.Variant('(sava{sv})', ('new-window-command',
+                     [GLib.Variant('as', arguments)], {})), path=path)
+            return
+    # Old instances cannot be safely classified. Start the patched binary
+    # independently instead of forwarding the request to an unpatched one.
+    os.execv(GHOSTTY, [GHOSTTY, '--gtk-single-instance=false', *arguments])
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (GLib.Error, OSError, ValueError, subprocess.SubprocessError) as error:
+        print(f'Ghostty window routing failed: {error}', file=sys.stderr)
+        subprocess.run(['logger', '-t', 'dolphin-open-ghostty', '--', str(error)], check=False)
+        sys.exit(1)
