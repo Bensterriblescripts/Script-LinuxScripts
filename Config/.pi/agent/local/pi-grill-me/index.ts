@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { CustomEditor, DynamicBorder, getMarkdownTheme, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import {
@@ -107,7 +108,7 @@ We are starting a grill-me session to reach shared understanding before producin
 - Intent: ${state.intent}
 - Grilling style: thorough Socratic interview
 - Research mode: ${state.researchMode}
-- Initial research: ${state.phase === "research" ? "pending; inspect relevant local code/docs first, then web search only if needed" : "skipped; research mode is off"}
+- Initial research: ${state.phase === "research" ? "pending; inspect relevant local code/docs first, then use web search to gather relevant factual context and anecdotal perspectives when useful" : "skipped; research mode is off"}
 - Output preference: ${describeOutputPreference(state)}
 
 ## Decisions
@@ -453,7 +454,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 		updateUi(ctx);
 
 		const kickoff = state.phase === "research"
-			? "Begin the initial read-only research stage before normal interview questions. Inspect relevant local code and documentation first; use web_search only if needed. Respect research-mode permission requirements."
+			? "Begin the initial read-only research stage before normal interview questions. Inspect relevant local code and documentation first; use web_search to gather relevant factual context and anecdotal perspectives when useful. Respect research-mode permission requirements."
 			: "Initial research is skipped because research mode is off. Begin the interview.";
 		pi.sendUserMessage(`Start a Grill Me session for this requested change:\n\n${topic}\n\nUse the existing conversation and available summaries as background context, preserving prior user decisions and constraints. The explicit change above defines the scope; do not substitute an inferred topic or treat assistant suggestions as confirmed requirements.\n\n${kickoff}`, { deliverAs: "steer" });
 	}
@@ -686,7 +687,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 		description: "Record initial research findings in the full shared-understanding checkpoint and transition to the normal Grill interview.",
 		promptSnippet: "Complete initial local-first research before normal Grill interview questions",
 		promptGuidelines: [
-			"During the initial Grill research phase, call grill_finish_research alone after inspecting relevant local code/docs and using web_search only when needed. Record evidence, paths, sources, constraints and unresolved questions; then briefly summarize findings and continue the interview without approval.",
+			"During the initial Grill research phase, call grill_finish_research alone after inspecting relevant local code/docs first and using web_search to gather relevant factual context and anecdotal perspectives when useful. Record evidence, paths, sources, constraints and unresolved questions; then briefly summarize findings and continue the interview without approval.",
 		],
 		parameters: Type.Object({
 			markdown: Type.String({ minLength: 1, description: "Full replacement checkpoint preserving requirements and decisions, with research findings, relevant paths, external sources if used, constraints, and unresolved questions. Explicitly record unavailable evidence or declined research." }),
@@ -868,7 +869,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 			const markdown = params.plan.trim();
 			if (!markdown) throw new Error("The final plan must not be empty.");
 			signal?.throwIfAborted();
-			const directory = join(ctx.cwd, "plans");
+			const directory = join(homedir(), ".pi", "agent", "plans");
 			const path = join(directory, `grill-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}.md`);
 			const completingState = state;
 			savingPlan = true;
@@ -946,7 +947,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 		const researchGuidance: Record<ResearchMode, string> = {
 			off: "Do not proactively inspect files or research. Ask the user instead unless they explicitly provide context.",
 			ask: "Ask permission before inspecting local files/code or doing web research. Honor the approved scope and do not repeatedly ask for permission already granted. If research is declined, record the limitation and complete initial research with available context only.",
-			auto: "Inspect relevant local code, configuration and documentation first instead of asking questions that files can answer. Use web_search only if local evidence leaves questions requiring external information. Keep research focused and read-only. If web_search is unavailable or fails, record the limitation rather than installing tools or claiming verification. Do not send private code, conversation content or secrets in web queries.",
+			auto: "Inspect relevant local code, configuration and documentation first instead of asking questions that files can answer. Use web_search to gather relevant factual context and anecdotal perspectives when useful. Keep research focused and read-only. If web_search is unavailable or fails, record the limitation rather than installing tools or claiming verification. Do not send private code, conversation content or secrets in web queries.",
 		};
 
 		const outputPhaseGuidance = "You are in read-only interview mode. Do not implement, write artifacts, create issues, install packages, or run mutating commands here.";
@@ -954,7 +955,7 @@ export default function grillMeExtension(pi: ExtensionAPI): void {
 		const prompt = `\n\n[GRILL ME EXTENSION ACTIVE]\nTopic:\n${state.topic}\n\nConfiguration:\n- Intent preset: ${state.intent}\n- Research mode: ${state.researchMode}\n- Output preference: ${describeOutputPreference(state)}\n\nCurrent checkpoint:\n${state.checkpoint || "(No checkpoint yet.)"}\n\nCurrent Tab alternatives:\n${state.alternatives.length ? state.alternatives.map((a) => `- ${a.label}: ${a.value}${a.description ? ` (${a.description})` : ""}`).join("\n") : "(None set.)"}\n\nBehavior:\n- Apply the Socratic method to reach shared understanding of the user's intended outcome, reasoning, and constraints. Understanding the user is the interview's primary goal; the final plan expresses that understanding.\n- Avoid hardcoded interview phases. Adapt the dimensions you explore to the subject and to the user's expertise.\n- Treat desired outcome mode as important: learning, building, researching, content/tutorial creation, decision review, etc.\n- The completion artifact is a self-contained implementation plan. Include requested deliverables and /grill output preferences within its scope; do not produce those artifacts in the interview session.\n- Ask mostly one focused question at a time. Small grouped questions are allowed only when inseparable.\n- Every grill question must present 2-5 concrete answer alternatives. Before asking the question, call grill_set_alternatives so the user can fill/cycle those alternatives with Tab and send the selected or edited reply with Enter. Also show the same alternatives briefly in chat.\n- Include your recommended answer by default with each grill question and mark it as recommended.\n- ${thoroughGrillingGuidance}\n- ${researchGuidance[state.researchMode]}\n- ${outputPhaseGuidance}\n\nCheckpoint rule:\n- The checkpoint is the source of durable shared understanding. Reflect user corrections and distinguish confirmed decisions from recommendations, assumptions, and explicitly deferred questions.\n- Whenever the user's answer meaningfully changes shared understanding, call grill_update_checkpoint with a full replacement Markdown checkpoint and a concise changeSummary BEFORE asking the next grill question.\n- The checkpoint should be adaptive Markdown. Add/remove sections as appropriate for the topic.\n- Maintain an adaptive coverage checklist and decision-branch ledger in the checkpoint; mark branches resolved, open, contradicted, or intentionally deferred. A contradiction remains unresolved until clarified or explicitly deferred.\n- If there is no meaningful change, you may ask the next question without updating.\n\nReadiness/output rule:\n- Resolve consequential ambiguities in objective, scope, constraints, dependencies, risks, and validation during the interview. Explicitly defer non-blocking questions; do not re-ask settled questions or invent a final confirmation step.\n- The plan must preserve agreed requirements, rationale, constraints, non-goals, steps and validation. Distinguish decisions from assumptions and deferred items, and include the context a fresh session needs without interview history.\n- Do not expand scope or bypass permission, authentication, or repository setup gates; preserve these constraints in the handoff plan.\n- If the user asks to stop or cancel, do not finish or queue implementation. /grill stop cancels without implementation. If the user adds context before completion, incorporate it and continue resolving consequential questions.\n[/GRILL ME EXTENSION ACTIVE]`;
 
 		const stageGuidance = currentPhase(state) === "research"
-			? "Initial research is pending. Before normal interview questions, research the explicit requested change using the conversation and available summaries as background. Preserve confirmed user decisions separately from suggestions. Ask only for research permission or essential missing context that prevents research (such as the project directory), using Tab alternatives. Inspect relevant local code/docs first, then use web_search only if needed and permitted. Record findings, paths, sources, constraints, and unresolved questions in the checkpoint. Do not implement or produce a final plan yet. Call grill_finish_research alone when the focused research pass is complete, or when unavailable/declined evidence has been explicitly recorded. After that tool succeeds, this initial-stage restriction is satisfied: briefly summarize the findings and continue the normal adaptive interview immediately, without approval. Do not repeat initial research on subsequent turns; targeted follow-up research may still be useful."
+			? "Initial research is pending. Before normal interview questions, research the explicit requested change using the conversation and available summaries as background. Preserve confirmed user decisions separately from suggestions. Ask only for research permission or essential missing context that prevents research (such as the project directory), using Tab alternatives. Inspect relevant local code/docs first, then use web_search to gather relevant factual context and anecdotal perspectives when useful. Respect research-mode permission requirements. Record findings, paths, sources, constraints, and unresolved questions in the checkpoint. Do not implement or produce a final plan yet. Call grill_finish_research alone when the focused research pass is complete, or when unavailable/declined evidence has been explicitly recorded. After that tool succeeds, this initial-stage restriction is satisfied: briefly summarize the findings and continue the normal adaptive interview immediately, without approval. Do not repeat initial research on subsequent turns; targeted follow-up research may still be useful."
 			: "Initial research is completed, skipped, or not required for this restored interview. Continue the normal adaptive interview; do not restart the initial research stage. Targeted follow-up research remains subject to the research mode.";
 		return { systemPrompt: event.systemPrompt + prompt + `\n\nGrill stage: ${currentPhase(state)}\n${stageGuidance}` };
 	});

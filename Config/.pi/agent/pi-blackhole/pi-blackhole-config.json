@@ -1,5 +1,6 @@
 {
   "debug": false,
+  "statusBar": false,
   "sessionFallback": true,
   "compaction": "auto",
   "compactionEngine": "blackhole",

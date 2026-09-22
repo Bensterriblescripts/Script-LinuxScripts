@@ -1,9 +1,10 @@
-import { basename } from "node:path";
+import { homedir } from "node:os";
+import { sep } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // Display-only: no tools, prompt hooks, transcript writes, or model calls.
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const clean = (s: string) => s.replace(/[\x00-\x1f\x7f-\x9f]/g, " ").slice(0, 160);
+const clean = (s: string) => s.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 
 export default function (pi: ExtensionAPI) {
   let ctx: ExtensionContext | undefined;
@@ -20,8 +21,9 @@ export default function (pi: ExtensionAPI) {
   }
 
   function base() {
-    const name = pi.getSessionName();
-    return `π - ${name ? `${clean(name)} - ` : ""}${clean(basename(ctx!.cwd))}`;
+    const cwd = ctx!.cwd;
+    const home = homedir();
+    return clean(cwd === home ? "~" : cwd.startsWith(home + sep) ? `~${cwd.slice(home.length)}` : cwd);
   }
 
   function restingStatus(): string {
