@@ -1,0 +1,181 @@
+--- a/src/apprt/gtk/class/application.zig
++++ b/src/apprt/gtk/class/application.zig
+@@ -167,6 +167,8 @@
+     };
+ 
+     const Private = struct {
++        routing_registration: c_uint = 0,
++
+         /// The apprt App. This is annoying that we need this it'd be
+         /// nicer to just make THIS the apprt app but the current libghostty
+         /// API doesn't allow that.
+@@ -1384,6 +1386,9 @@
+         // Setup our action map
+         self.startupActionMap();
+ 
++        // Local window-level routing API (independent of focus).
++        self.startupWindowRouting();
++
+         // Setup our global shortcuts
+         self.startupGlobalShortcuts();
+ 
+@@ -1501,6 +1506,114 @@
+         ext.actions.add(Self, self, &actions);
+     }
+ 
++    const routing_interface = "com.mitchellh.ghostty.WindowRouting1";
++    const routing_path = "/com/mitchellh/ghostty/WindowRouting";
++    const routing_xml =
++        \\<node><interface name="com.mitchellh.ghostty.WindowRouting1">
++        \\<method name="ListWindows"><arg name="windows" type="a(utat)" direction="out"/></method>
++        \\<method name="NewTab"><arg name="window" type="u" direction="in"/>
++        \\<arg name="created_at" type="t" direction="in"/>
++        \\<arg name="arguments" type="as" direction="in"/></method>
++        \\</interface></node>
++    ;
++    const routing_vtable: gio.DBusInterfaceVTable = .{
++        .f_method_call = routingMethodCall,
++        .f_get_property = null,
++        .f_set_property = null,
++        // Reserved fields are not accessed by GLib.
++        .f_padding = undefined,
++    };
++
++    fn startupWindowRouting(self: *Self) void {
++        const connection = self.as(gio.Application).getDbusConnection() orelse return;
++        var err: ?*glib.Error = null;
++        defer if (err) |e| e.free();
++        const info = gio.DBusNodeInfo.newForXml(routing_xml, &err) orelse return;
++        defer info.unref();
++        self.private().routing_registration = connection.registerObject(
++            routing_path,
++            info.lookupInterface(routing_interface).?,
++            &routing_vtable,
++            self,
++            routingDataFree,
++            &err,
++        );
++        if (err) |e| log.warn("window routing registration failed: {s}", .{e.f_message orelse "unknown"});
++    }
++
++    fn routingDataFree(_: ?*anyopaque) callconv(.c) void {}
++
++    fn routingMethodCall(
++        _: *gio.DBusConnection,
++        _: ?[*:0]const u8,
++        _: [*:0]const u8,
++        _: ?[*:0]const u8,
++        method: [*:0]const u8,
++        parameters: *glib.Variant,
++        invocation: *gio.DBusMethodInvocation,
++        data: ?*anyopaque,
++    ) callconv(.c) void {
++        const self: *Self = @ptrCast(@alignCast(data.?));
++        if (std.mem.eql(u8, std.mem.span(method), "ListWindows")) {
++            const windows_type = glib.VariantType.new("a(utat)");
++            defer windows_type.free();
++            const windows = glib.VariantBuilder.new(windows_type);
++            defer windows.unref();
++            const ids_type = glib.VariantType.new("at");
++            defer ids_type.free();
++            var iter: ?*glib.List = self.as(gtk.Application).getWindows();
++            while (iter) |node| : (iter = node.f_next) {
++                const object: *gobject.Object = @ptrCast(@alignCast(node.f_data.?));
++                const window = gobject.ext.cast(Window, object) orelse continue;
++                // The quick terminal is not a regular Dolphin target.
++                if (window.isQuickTerminal()) continue;
++                const ids = glib.VariantBuilder.new(ids_type);
++                defer ids.unref();
++                for (self.core().surfaces.items) |surface| {
++                    const owner = ext.getAncestor(Window, surface.surface.as(gtk.Widget)) orelse continue;
++                    if (owner == window) ids.add("t", surface.core().id);
++                }
++                windows.add("(ut@at)", window.as(gtk.ApplicationWindow).getId(), window.routingCreatedAt(), ids.end());
++            }
++            invocation.returnValue(glib.Variant.newTuple(&.{windows.end()}, 1));
++            return;
++        }
++        if (std.mem.eql(u8, std.mem.span(method), "NewTab")) {
++            var id: u32 = 0;
++            var created_at: u64 = 0;
++            var arguments: ?*glib.VariantIter = null;
++            parameters.get("(utas)", &id, &created_at, &arguments);
++            const args = arguments.?;
++            defer args.free();
++            // ID + creation timestamp prevents targeting a reused GTK window ID.
++            // Lookup and creation run synchronously on the GTK main thread.
++            var iter: ?*glib.List = self.as(gtk.Application).getWindows();
++            while (iter) |node| : (iter = node.f_next) {
++                const object: *gobject.Object = @ptrCast(@alignCast(node.f_data.?));
++                const window = gobject.ext.cast(Window, object) orelse continue;
++                if (window.as(gtk.ApplicationWindow).getId() != id or
++                    window.routingCreatedAt() != created_at or window.isQuickTerminal()) continue;
++                var arena: std.heap.ArenaAllocator = .init(self.core().alloc);
++                defer arena.deinit();
++                const overrides = parseOverrides(arena.allocator(), args) catch {
++                    invocation.returnDbusError(routing_interface ++ ".InvalidArguments", "Invalid tab arguments");
++                    return;
++                };
++                window.newTab(if (window.getActiveSurface()) |s| s.core() else null, .{
++                    .command = overrides.command,
++                    .shell_integration = overrides.shell_integration,
++                    .working_directory = overrides.working_directory,
++                    .title = overrides.title,
++                });
++                invocation.returnValue(null);
++                return;
++            }
++            invocation.returnDbusError(routing_interface ++ ".WindowNotFound", "Target window has closed");
++            return;
++        }
++        invocation.returnDbusError("org.freedesktop.DBus.Error.UnknownMethod", "Unknown routing method");
++    }
++
+     /// Setup our global shortcuts.
+     fn startupGlobalShortcuts(self: *Self) void {
+         const priv = self.private();
+@@ -1555,6 +1668,12 @@
+ 
+     fn dispose(self: *Self) callconv(.c) void {
+         const priv = self.private();
++        if (priv.routing_registration != 0) {
++            if (self.as(gio.Application).getDbusConnection()) |connection| {
++                _ = connection.unregisterObject(priv.routing_registration);
++            }
++            priv.routing_registration = 0;
++        }
+         if (priv.config_errors_dialog.get()) |diag| {
+             diag.close();
+             diag.unref(); // strong ref from get()
+--- a/src/apprt/gtk/class/window.zig
++++ b/src/apprt/gtk/class/window.zig
+@@ -230,6 +230,9 @@
+     };
+ 
+     const Private = struct {
++        // Monotonic microseconds, fixed for the lifetime of this window.
++        routing_created_at: u64 = 0,
++
+         /// Whether this window is a quick terminal. If it is then it
+         /// behaves slightly differently under certain scenarios.
+         quick_terminal: bool = false,
+@@ -324,6 +327,8 @@
+             break :config config.get();
+         };
+ 
++        priv.routing_created_at = @intCast(glib.getMonotonicTime());
++
+         // We initialize our windowing protocol to none because we can't
+         // actually initialize this until we get realized.
+         priv.winproto = .none;
+@@ -401,6 +406,10 @@
+     }
+ 
+     /// Winproto backend for this window.
++    pub fn routingCreatedAt(self: *Self) u64 {
++        return self.private().routing_created_at;
++    }
++
+     pub fn winproto(self: *Self) *winprotopkg.Window {
+         return &self.private().winproto;
+     }

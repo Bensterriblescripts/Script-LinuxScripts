@@ -1,1 +1,1 @@
-alias fup='yay -Syu --noconfirm --answerclean None --answerdiff None --answeredit None'
+alias fup='sudo apt update && sudo apt full-upgrade -y && sudo apt autoremove && sudo apt autoclean && sudo snap refresh'

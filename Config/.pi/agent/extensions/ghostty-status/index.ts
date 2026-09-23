@@ -28,15 +28,15 @@ export default function (pi: ExtensionAPI) {
 
   function restingStatus(): string {
     const entries = ctx!.sessionManager.getBranch();
-    let grill: any;
+    let build: any;
     let assistant: any;
     for (const entry of entries) {
-      if (entry.type === "custom" && entry.customType === "grill-me-state") grill = entry.data;
+      if (entry.type === "custom" && entry.customType === "build-state") build = entry.data;
       if (entry.type === "message" && entry.message.role === "assistant") assistant = entry.message;
     }
     if (compactionFailed || assistant?.stopReason === "error") return "! Error";
     if (assistant?.stopReason === "aborted") return "! Stopped";
-    if (grill?.active && !grill.outputPhase && grill.phase !== "output") return "? Needs input";
+    if (build?.active && !build.outputPhase && build.phase !== "output") return "? Needs input";
     return assistant ? "✓ Finished" : "○ Ready";
   }
 
@@ -50,8 +50,6 @@ export default function (pi: ExtensionAPI) {
     const busy = !prompting && (running || compacting);
     const status = prompting ? "? Needs input" : busy ? `${FRAMES[frame++ % FRAMES.length]} Working` : restingStatus();
     ctx.ui.setTitle(`${status} | ${base()}`);
-    // Pi also writes its default title after startup/rename. Refresh slowly while
-    // idle to restore our indicator and notice local /grill state changes.
     clearTimer();
     timer = setTimeout(render, busy ? 120 : 1000);
     timer.unref();

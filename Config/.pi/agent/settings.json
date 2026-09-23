@@ -3,10 +3,10 @@
   "theme": "dark",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6-astra",
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "high",
   "packages": [
     "npm:pi-web-search",
-    "/home/ben.nanson@MITO.org.nz/.pi/agent/local/pi-grill-me",
+    "/home/ben.nanson@MITO.org.nz/.pi/agent/local/pi-build",
     "npm:pi-blackhole"
   ],
   "followUpMode": "one-at-a-time",

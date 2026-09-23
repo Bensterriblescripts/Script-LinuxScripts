@@ -1,10 +1,34 @@
-import { CustomEditor, getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { CustomEditor, getAgentDir, type ExtensionAPI, type ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { join } from 'node:path';
 import { readHistory, saveInput } from './storage.mjs';
+
+interface BuildTopicHistory {
+  load(): Promise<string[]>;
+  save(text: string): Promise<void>;
+}
 
 export default function (pi: ExtensionAPI) {
   const directory = join(getAgentDir(), 'global-input-history');
   let snapshot: string[] | undefined;
+
+  pi.events.on('global-input-history:build-topic', (request: { ctx: ExtensionContext; history?: BuildTopicHistory }) => {
+    const { ctx } = request;
+    if (ctx.mode !== 'tui') return;
+    request.history = {
+      async load() {
+        try { return await readHistory(directory); }
+        catch {
+          ctx.ui.notify('Global input history could not be read; existing data was left untouched.', 'warning');
+          return [];
+        }
+      },
+      async save(text) {
+        if (ctx.mode !== 'tui' || !ctx.sessionManager.getSessionFile()) return;
+        try { await saveInput(directory, text); }
+        catch { ctx.ui.notify('Global input history could not be saved; your prompt will continue normally.', 'warning'); }
+      },
+    };
+  });
 
   pi.on('session_start', async (event, ctx) => {
     snapshot = undefined;
@@ -26,7 +50,6 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Documented post-session_start phase: Grill has now installed its factory.
   // Return no resources; history must never become a prompt, skill, or context.
   pi.on('resources_discover', (_event, ctx) => {
     if (ctx.mode !== 'tui' || snapshot === undefined) return;

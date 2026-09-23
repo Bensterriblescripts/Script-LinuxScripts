@@ -127,6 +127,11 @@ def main():
     parser.add_argument('mode', choices=['pi', 'terminal'])
     parser.add_argument('directory', type=Path)
     args = parser.parse_args()
+    if not args.dry_run:
+        with (Path.home() / '.local/share/ghostty-window-routing/activation-presence.tmp').open('a') as diagnostic:
+            diagnostic.write(json.dumps(dict(mode=args.mode,
+                activation_token=bool(os.environ.get('XDG_ACTIVATION_TOKEN')),
+                startup_id=bool(os.environ.get('DESKTOP_STARTUP_ID')))) + '\n')
     directory = args.directory.resolve()
     if not directory.is_dir():
         parser.error(f'Not a directory: {directory}')

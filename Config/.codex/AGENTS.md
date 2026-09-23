@@ -1,5 +1,6 @@
-Arch Linux. Fish Shell.
+Linux, KDE.
 Be concise.
-Do not use git or any version-control data.
-Prefer inlining logic into longer functions if a function will only be called once.
+Ignore all version control and git data.
 Avoid comments unless requested.
+Avoid creating test files and functions unless they're temporary.
+Prefer inlining functions over cloning memory in helper functions.
