@@ -1,9 +1,11 @@
 import type { ExtensionAPI, ExtensionContext, KeybindingsManager, RegisteredCommand } from "@earendil-works/pi-coding-agent";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import { clipboardPaths, prepareClipboardImages } from "./clipboard-images.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { CustomEditor, DynamicBorder, ExtensionEditorComponent, getAgentDir, getMarkdownTheme, SettingsManager, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, DynamicBorder, getMarkdownTheme, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import {
 	Editor,
 	Markdown,
@@ -21,11 +23,6 @@ import { Type } from "typebox";
 type Intent = "auto" | "plan" | "learn" | "research" | "content" | "decide";
 type ResearchMode = "off" | "ask" | "auto";
 type BuildPhase = "research" | "interview" | "output-selection" | "output";
-
-interface BuildTopicHistory {
-	load(): Promise<string[]>;
-	save(text: string): Promise<void>;
-}
 
 interface BuildAlternative {
 	value: string;
@@ -198,6 +195,8 @@ function emptyChoices(): BuildChoices {
 
 class BuildReplyEditor extends CustomEditor {
 	private pasting = false;
+	private handlingInput = false;
+	revision = 0;
 
 	constructor(
 		tui: TUI,
@@ -207,15 +206,45 @@ class BuildReplyEditor extends CustomEditor {
 		private readonly getChoices: () => BuildChoices,
 		private readonly refresh: () => void,
 		private readonly reportError: (error: unknown) => void,
+		private readonly enteringTopic: () => boolean,
+		private readonly recordSubmission: (text: string) => void,
+		private readonly handleSubmissionControl: (data: string) => void,
 		options?: EditorOptions,
 	) {
 		super(tui, theme, keybindings, options);
+		let changed = this.onChange;
+		let previousText = this.getExpandedText();
+		Object.defineProperty(this, "onChange", {
+			configurable: true,
+			get: () => (text: string) => {
+				const expanded = this.getExpandedText();
+				if (expanded !== previousText) this.revision++;
+				previousText = expanded;
+				changed?.call(this, text);
+			},
+			set: (callback) => { changed = callback; },
+		});
+	}
+
+	override addToHistory(text: string): void {
+		if (this.handlingInput) this.recordSubmission(text);
+		super.addToHistory(text);
 	}
 
 	override handleInput(data: string): void {
+		this.handlingInput = true;
+		try {
+			this.handleSubmissionControl(data);
+			this.handleBuildInput(data);
+		} finally {
+			this.handlingInput = false;
+		}
+	}
+
+	private handleBuildInput(data: string): void {
 		const state = this.getBuildState();
 		const choices = this.getChoices();
-		const available = state.active && state.alternatives.length > 0 && choices.ready;
+		const available = !this.enteringTopic() && state.active && state.alternatives.length > 0 && choices.ready;
 		if (data.includes("\x1b[200~")) this.pasting = true;
 		if (this.pasting) {
 			choices.focused = false;
@@ -412,6 +441,53 @@ export default function buildExtension(pi: ExtensionAPI): void {
 	let choices = emptyChoices();
 	let presentedAlternatives: BuildAlternative[] | undefined;
 	let answeringAlternatives: BuildAlternative[] | undefined;
+	let pendingTopic: Partial<BuildState> | undefined;
+	let generation = 0;
+	let live = false;
+	let editor: BuildReplyEditor | undefined;
+	const preparations = new Set<AbortController>();
+	let submissions: { text: string; generation: number; revision: number }[] = [];
+
+	function cancelPreparations(): void {
+		for (const controller of preparations) controller.abort();
+		preparations.clear();
+	}
+
+	function clearTopicEntry(): void {
+		generation++;
+		pendingTopic = undefined;
+		cancelPreparations();
+	}
+
+	function isControl(text: string): boolean {
+		const trimmed = text.trimStart();
+		return trimmed.startsWith("!") || (trimmed.startsWith("/") && !clipboardPaths(trimmed).some((path) => trimmed.startsWith(path)));
+	}
+
+	async function prepareDraft(text: string, images: ImageContent[] | undefined, recovery: string, ctx: ExtensionContext, revision = editor?.revision): Promise<ImageContent[] | undefined> {
+		const controller = new AbortController();
+		const currentGeneration = generation;
+		const currentEditor = editor;
+		const signal = ctx.signal ? AbortSignal.any([controller.signal, ctx.signal]) : controller.signal;
+		preparations.add(controller);
+		try {
+			const prepared = await prepareClipboardImages(text, images, signal);
+			if (generation !== currentGeneration || signal.aborted) return;
+			return prepared;
+		} catch (error) {
+			if (generation !== currentGeneration || signal.aborted) return;
+			const restore = ctx.mode === "tui" && editor === currentEditor && editor?.revision === revision && !ctx.ui.getEditorText();
+			if (restore) ctx.ui.setEditorText(recovery);
+			ctx.ui.notify(`${error instanceof Error ? error.message : String(error)}. Nothing sent. Remove the reference or paste the image again. ${restore ? "Draft restored." : ctx.mode === "tui" ? "Your editor was left untouched; recall the draft from input history to retry." : "Resubmit the original draft after fixing its image references."}`, "error");
+			return;
+		} finally {
+			preparations.delete(controller);
+		}
+	}
+
+	function kickoffText(topic: string): string {
+		return `Start a Build session for this requested change:\n\n${topic}`;
+	}
 
 	function resetChoices(): void {
 		choices = emptyChoices();
@@ -449,7 +525,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 
 	function updateUi(ctx: ExtensionContext): void {
 		if (ctx.mode === "tui") {
-			if (!state.active || !choices.ready || choices.submitting || state.alternatives.length === 0) {
+			if (pendingTopic || !state.active || !choices.ready || choices.submitting || state.alternatives.length === 0) {
 				ctx.ui.setWidget("build-choices", undefined);
 			} else {
 				ctx.ui.setWidget("build-choices", (tui, theme) => {
@@ -493,6 +569,11 @@ export default function buildExtension(pi: ExtensionAPI): void {
 				}, { placement: "aboveEditor" });
 			}
 		}
+		if (pendingTopic) {
+			ctx.ui.setStatus("build", ctx.ui.theme.fg("accent", "Build: enter topic"));
+			ctx.ui.setWidget("build", ["What change would you like to make?", "Send your topic in the composer • /build stop cancels"], { placement: "belowEditor" });
+			return;
+		}
 		if (!state.active) {
 			ctx.ui.setStatus("build", undefined);
 			ctx.ui.setWidget("build", undefined);
@@ -511,6 +592,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 	}
 
 	function startSession(topic: string, ctx: ExtensionContext, partial: Partial<BuildState> = {}): void {
+		pendingTopic = undefined;
 		resetChoices();
 		state = {
 			...cloneState(DEFAULT_STATE),
@@ -534,8 +616,6 @@ export default function buildExtension(pi: ExtensionAPI): void {
 		state.lastChangeSummary = "Started Build session";
 		persist();
 		updateUi(ctx);
-
-		pi.sendUserMessage(`Start a Build session for this requested change:\n\n${topic}`, { deliverAs: "steer" });
 	}
 
 	async function showCheckpointOverlay(ctx: ExtensionContext): Promise<"edit" | undefined> {
@@ -657,6 +737,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			}
 
 			if (command === "stop") {
+				clearTopicEntry();
 				state.pendingPlan = undefined;
 				state.active = false;
 				state.phase = "interview";
@@ -688,6 +769,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify(`Usage: /build intent ${INTENTS.join("|")}`, "warning");
 					return;
 				}
+				if (pendingTopic) pendingTopic.intent = value;
 				state.intent = value;
 				state.lastChangeSummary = `Intent set to ${value}`;
 				persist();
@@ -701,6 +783,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify("Usage: /build output <one or more outputs, e.g. design-doc,issues>", "warning");
 					return;
 				}
+				if (pendingTopic) pendingTopic.outputPreference = rest;
 				state.outputPreference = rest;
 				state.lastChangeSummary = `Output preference set to ${rest}`;
 				persist();
@@ -715,6 +798,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 					ctx.ui.notify(`Usage: /build research ${RESEARCH_MODES.join("|")}`, "warning");
 					return;
 				}
+				if (pendingTopic) pendingTopic.researchMode = value;
 				state.researchMode = value;
 				if (value === "off" && state.phase === "research") {
 					state.phase = "interview";
@@ -736,45 +820,34 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			if (researchMode) partial.researchMode = researchMode;
 			if (typeof parsed.flags.output === "string") partial.outputPreference = parsed.flags.output;
 
+			clearTopicEntry();
+			updateUi(ctx);
+			const currentGeneration = generation;
 			let topic = parsed.rest;
 			if (!topic) {
+				if (ctx.mode === "tui") {
+					pendingTopic = partial;
+					choices.focused = false;
+					updateUi(ctx);
+					return;
+				}
 				if (!ctx.hasUI) {
 					showDisplay("Provide the requested change with /build <change>.", ctx);
 					return;
-				} else {
-					const request: { ctx: ExtensionContext; history?: BuildTopicHistory } = { ctx };
-					if (ctx.mode === "tui") pi.events.emit("global-input-history:build-topic", request);
-					const history = request.history;
-					const title = "What change would you like to make?";
-					let edited: string | undefined;
-					if (history) {
-						const entries = await history.load();
-						const externalEditor = SettingsManager.create(ctx.cwd, getAgentDir(), {
-							projectTrusted: ctx.isProjectTrusted(),
-						}).getExternalEditorCommand();
-						edited = await ctx.ui.custom<string | undefined>((tui, _theme, keybindings, done) => {
-							const dialog = new ExtensionEditorComponent(tui, keybindings, title, "", done,
-								() => done(undefined), undefined, externalEditor);
-							for (const child of dialog.children) {
-								if (child instanceof Editor) {
-									for (const entry of entries) child.addToHistory(entry);
-								}
-							}
-							return dialog;
-						});
-					} else {
-						edited = await ctx.ui.editor(title, "");
-					}
-					if (!edited?.trim()) {
-						ctx.ui.notify("Cancelled Build start.", "info");
-						return;
-					}
-					topic = edited.trim();
-					await history?.save(topic);
 				}
+				const edited = await ctx.ui.editor("What change would you like to make?", "");
+				if (generation !== currentGeneration) return;
+				if (!edited?.trim()) {
+					ctx.ui.notify("Cancelled Build start.", "info");
+					return;
+				}
+				topic = edited.trim();
 			}
 
+			const images = await prepareDraft(topic, undefined, `/build ${trimmed || topic}`, ctx);
+			if (!images || generation !== currentGeneration) return;
 			startSession(topic, ctx, partial);
+			pi.sendUserMessage([{ type: "text", text: kickoffText(topic) }, ...images], { deliverAs: "steer" });
 		},
 	};
 	pi.registerCommand("build", buildCommand);
@@ -971,6 +1044,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			if (state !== completingState || !state.active) {
 				throw new Error(`Build changed while saving; plan saved but handoff cancelled: ${path}`);
 			}
+			clearTopicEntry();
 			state.pendingPlan = { path, markdown };
 			state.active = false;
 			state.phase = "interview";
@@ -1097,13 +1171,30 @@ Completion policy:
 		};
 	});
 
-	pi.on("input", (event) => {
-		answeringAlternatives = undefined;
-		if (!state.active || state.alternatives.length === 0 || event.source === "extension" || /^[!/]/.test(event.text.trimStart())) return;
-		answeringAlternatives = state.alternatives;
-		const value = choices.submittedValue;
+	pi.on("input", async (event, ctx) => {
+		if (!live) return { action: "handled" };
+		if (event.source === "extension" || isControl(event.text)) return;
+		const submissionIndex = event.source === "interactive" ? submissions.findIndex((item) => item.text === event.text) : -1;
+		const submission = submissionIndex < 0 ? undefined : submissions.splice(submissionIndex, 1)[0];
+		if (submission && submission.generation !== generation) return { action: "handled" };
+		if (!pendingTopic && !state.active) return;
+		if (!event.text.trim() && !event.images?.length) return { action: "handled" };
+		const pending = pendingTopic;
+		const currentGeneration = generation;
+		const currentState = state;
+		const alternatives = state.alternatives;
+		const value = pending ? undefined : choices.submittedValue;
 		choices.submittedValue = undefined;
-		if (value !== undefined && event.text === value.trim()) return { action: "transform", text: value };
+		const text = value !== undefined && event.text === value.trim() ? value : event.text;
+		const images = await prepareDraft(text, event.images, text, ctx, submission?.revision);
+		if (!images || generation !== currentGeneration || state !== currentState || pendingTopic !== pending || (!pending && !state.active)) return { action: "handled" };
+		if (pending) {
+			startSession(text, ctx, pending);
+			pi.events.emit("global-input-history:transform", { images, originalText: event.text });
+			return { action: "transform", text: kickoffText(text), images };
+		}
+		answeringAlternatives = alternatives.length ? alternatives : undefined;
+		return { action: "transform", text, images };
 	});
 
 	pi.on("message_start", (event, ctx) => {
@@ -1142,7 +1233,7 @@ Completion policy:
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
-		if (presentedAlternatives !== state.alternatives || !state.active || ctx.signal?.aborted) return;
+		if (pendingTopic || presentedAlternatives !== state.alternatives || !state.active || ctx.signal?.aborted) return;
 		presentedAlternatives = undefined;
 		if (!choices.ready) {
 			choices.ready = true;
@@ -1152,6 +1243,8 @@ Completion policy:
 	});
 
 	function restoreState(ctx: ExtensionContext): void {
+		clearTopicEntry();
+		submissions = [];
 		resetChoices();
 		state = cloneState(DEFAULT_STATE);
 		for (const entry of ctx.sessionManager.getBranch()) {
@@ -1170,24 +1263,57 @@ Completion policy:
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
+		live = true;
 		restoreState(ctx);
 		if (ctx.mode !== "tui") return;
-		ctx.ui.setEditorComponent((tui, theme, keybindings) => new BuildReplyEditor(
-			tui, theme, keybindings, () => state, () => choices, () => updateUi(ctx),
-			(error) => ctx.ui.notify(`Could not submit Build answer: ${error}`, "error"),
-		));
+		ctx.ui.setEditorComponent((tui, theme, keybindings) => {
+			editor = new BuildReplyEditor(
+				tui, theme, keybindings, () => state, () => choices, () => updateUi(ctx),
+				(error) => ctx.ui.notify(`Could not submit Build answer: ${error}`, "error"),
+				() => pendingTopic !== undefined,
+				(text) => {
+					if ((pendingTopic || state.active) && !isControl(text)) submissions.push({ text, generation, revision: editor!.revision });
+				},
+				(data) => {
+					if (keybindings.matches(data, "app.interrupt") && !editor!.isShowingAutocomplete()) {
+						cancelPreparations();
+						if (!ctx.isIdle()) submissions = [];
+					} else if (keybindings.matches(data, "app.message.dequeue")) {
+						submissions = [];
+					}
+				},
+			);
+			return editor;
+		});
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
 		restoreState(ctx);
 	});
 
+	function cancelTopicEntry(_event: unknown, ctx: ExtensionContext): void {
+		clearTopicEntry();
+		updateUi(ctx);
+	}
+
+	pi.on("session_before_switch", cancelTopicEntry);
+	pi.on("session_before_fork", cancelTopicEntry);
+	pi.on("session_before_tree", cancelTopicEntry);
+
 	pi.on("session_shutdown", (_event, ctx) => {
+		live = false;
+		clearTopicEntry();
+		submissions = [];
+		editor = undefined;
 		if (state.alternativesPresented && !choices.ready) {
 			state.alternativesPresented = false;
 			persist();
 		}
 		resetChoices();
-		if (ctx.mode === "tui") ctx.ui.setWidget("build-choices", undefined);
+		if (ctx.mode === "tui") {
+			ctx.ui.setWidget("build-choices", undefined);
+			ctx.ui.setWidget("build", undefined);
+			ctx.ui.setStatus("build", undefined);
+		}
 	});
 }

@@ -3,7 +3,7 @@
   "theme": "dark",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6-astra",
-  "defaultThinkingLevel": "high",
+  "defaultThinkingLevel": "medium",
   "packages": [
     "npm:pi-web-search",
     "/home/ben.nanson@MITO.org.nz/.pi/agent/local/pi-build",

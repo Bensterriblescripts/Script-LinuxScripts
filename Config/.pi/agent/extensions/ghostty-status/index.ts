@@ -2,7 +2,6 @@ import { homedir } from "node:os";
 import { sep } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-// Display-only: no tools, prompt hooks, transcript writes, or model calls.
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const clean = (s: string) => s.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 
@@ -15,6 +14,7 @@ export default function (pi: ExtensionAPI) {
   let compacting = false;
   let compactionFailed = false;
   let stopped = true;
+  let safeToClose: boolean | undefined;
 
   function enabled(context: ExtensionContext) {
     return context.mode === "tui" && process.env.TERM_PROGRAM === "ghostty";
@@ -45,10 +45,17 @@ export default function (pi: ExtensionAPI) {
     timer = undefined;
   }
 
+  function setCloseSafety(safe: boolean) {
+    if (!ctx || stopped || safeToClose === safe) return;
+    process.stdout.write(`\x1b]133;${safe ? "B" : "C"}\x07`);
+    safeToClose = safe;
+  }
+
   function render() {
     if (!ctx || stopped) return;
-    const busy = !prompting && (running || compacting);
+    const busy = !prompting && (running || compacting || !ctx.isIdle());
     const status = prompting ? "? Needs input" : busy ? `${FRAMES[frame++ % FRAMES.length]} Working` : restingStatus();
+    setCloseSafety(status === "✓ Finished");
     ctx.ui.setTitle(`${status} | ${base()}`);
     clearTimer();
     timer = setTimeout(render, busy ? 120 : 1000);
@@ -59,6 +66,8 @@ export default function (pi: ExtensionAPI) {
     clearTimer();
     ctx = context;
     stopped = !enabled(context);
+    safeToClose = undefined;
+    setCloseSafety(false);
     running = !context.isIdle();
     prompting = compacting = compactionFailed = false;
     frame = 0;
@@ -84,12 +93,15 @@ export default function (pi: ExtensionAPI) {
     compactionFailed = !event.aborted && !event.willRetry;
     render();
   });
+  pi.on("session_before_tree", () => render());
   pi.on("session_info_changed", () => render());
   pi.on("session_tree", () => render());
   pi.on("session_shutdown", () => {
     clearTimer();
+    setCloseSafety(false);
     if (ctx && !stopped) ctx.ui.setTitle(base());
     stopped = true;
+    safeToClose = undefined;
     ctx = undefined;
   });
 }

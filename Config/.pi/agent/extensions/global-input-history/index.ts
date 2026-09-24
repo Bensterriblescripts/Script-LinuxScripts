@@ -1,37 +1,21 @@
-import { CustomEditor, getAgentDir, type ExtensionAPI, type ExtensionContext } from '@earendil-works/pi-coding-agent';
+import { CustomEditor, getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { join } from 'node:path';
 import { readHistory, saveInput } from './storage.mjs';
-
-interface BuildTopicHistory {
-  load(): Promise<string[]>;
-  save(text: string): Promise<void>;
-}
 
 export default function (pi: ExtensionAPI) {
   const directory = join(getAgentDir(), 'global-input-history');
   let snapshot: string[] | undefined;
 
-  pi.events.on('global-input-history:build-topic', (request: { ctx: ExtensionContext; history?: BuildTopicHistory }) => {
-    const { ctx } = request;
-    if (ctx.mode !== 'tui') return;
-    request.history = {
-      async load() {
-        try { return await readHistory(directory); }
-        catch {
-          ctx.ui.notify('Global input history could not be read; existing data was left untouched.', 'warning');
-          return [];
-        }
-      },
-      async save(text) {
-        if (ctx.mode !== 'tui' || !ctx.sessionManager.getSessionFile()) return;
-        try { await saveInput(directory, text); }
-        catch { ctx.ui.notify('Global input history could not be saved; your prompt will continue normally.', 'warning'); }
-      },
-    };
+  let originalInputs = new WeakMap<object, string>();
+  pi.events.on('global-input-history:transform', (request) => {
+    if (!request || typeof request !== 'object' || !('images' in request) || !('originalText' in request)) return;
+    if (!request.images || typeof request.images !== 'object' || typeof request.originalText !== 'string') return;
+    originalInputs.set(request.images, request.originalText);
   });
 
   pi.on('session_start', async (event, ctx) => {
     snapshot = undefined;
+    originalInputs = new WeakMap();
     if (ctx.mode !== 'tui') return;
     try { snapshot = await readHistory(directory); }
     catch { ctx.ui.notify('Global input history could not be read; existing data was left untouched.', 'warning'); }
@@ -73,7 +57,9 @@ export default function (pi: ExtensionAPI) {
     // getSessionFile is public on ReadonlySessionManager and is allocated before
     // the first flush. Unlike checking file existence, this admits first prompts.
     if (ctx.mode !== 'tui' || event.source !== 'interactive' || !ctx.sessionManager.getSessionFile()) return;
-    try { await saveInput(directory, event.text); }
+    const text = (event.images && originalInputs.get(event.images)) ?? event.text;
+    if (event.images) originalInputs.delete(event.images);
+    try { await saveInput(directory, text); }
     catch { ctx.ui.notify('Global input history could not be saved; your prompt will continue normally.', 'warning'); }
     // No transforms, editor snapshots, replay capture, or context API calls.
   });

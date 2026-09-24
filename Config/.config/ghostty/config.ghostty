@@ -42,7 +42,7 @@ keybind = ctrl+shift+w=close_surface
 
 window-decoration = client
 
-confirm-close-surface = false
+confirm-close-surface = true
 quit-after-last-window-closed = true
 
 command = fish
