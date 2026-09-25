@@ -1,4 +1,5 @@
 [Desktop Entry]
+Name=Open Terminal
 Type=Service
 ServiceTypes=KonqPopupMenu/Plugin
 MimeType=inode/directory
@@ -7,5 +8,5 @@ Actions=RunGhosttyDir
 [Desktop Action RunGhosttyDir]
 Name=Open Terminal
 Icon=com.mitchellh.ghostty
-Exec=/home/ben.nanson@MITO.org.nz/.local/bin/dolphin-open-ghostty terminal %f
+Exec=dolphin-open-ghostty terminal %f
 

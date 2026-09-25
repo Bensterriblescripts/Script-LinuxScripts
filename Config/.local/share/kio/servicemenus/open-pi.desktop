@@ -9,4 +9,4 @@ X-KDE-Protocols=file
 [Desktop Action OpenPi]
 Name=Open Pi
 Icon=com.mitchellh.ghostty
-Exec=/home/ben.nanson@MITO.org.nz/.local/bin/dolphin-open-ghostty pi %f
+Exec=dolphin-open-ghostty pi %f

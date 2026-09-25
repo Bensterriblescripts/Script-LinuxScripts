@@ -1,5 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { readWeekly } from "./status.ts";
+import { formatSnapshot, readSnapshot, type Snapshot } from "./status.ts";
+
+const stateKey = Symbol.for("pi.codex-weekly.snapshot");
+const globals = globalThis as typeof globalThis & { [stateKey]?: { launched: boolean; snapshot: Snapshot } };
+const state = globals[stateKey] ??= { launched: false, snapshot: {} };
 
 export default function (pi: ExtensionAPI) {
   let ctx: ExtensionContext | undefined;
@@ -29,33 +33,41 @@ export default function (pi: ExtensionAPI) {
     return task;
   }
 
+  function render() {
+    clearExpiry();
+    if (!ctx) return;
+    const now = Date.now();
+    ctx.ui.setStatus("codex-weekly", formatSnapshot(state.snapshot, now));
+    const deadlines = [state.snapshot.weekly, state.snapshot.short]
+      .flatMap((window) => window && window.resetsAt * 1000 > now ? [window.resetsAt * 1000] : []);
+    if (deadlines.length) {
+      expiry = setTimeout(render, Math.min(...deadlines) - now);
+      expiry.unref();
+    }
+  }
+
   function refresh() {
     if (!ctx) return;
     pending = true;
     if (task) return;
     const token = generation;
-    const context = ctx;
+
     const current = async () => {
       while (pending && token === generation) {
         pending = false;
-        clearExpiry();
-        context.ui.setStatus("codex-weekly", "Weekly …");
+        render();
         const request = new AbortController();
         controller = request;
         try {
-          const snapshot = await readWeekly(request.signal);
+          const snapshot = await readSnapshot(request.signal);
           if (token !== generation) return;
-          const remaining = snapshot.resetsAt * 1000 - Date.now();
-          context.ui.setStatus("codex-weekly", remaining > 0 ? snapshot.text : "Weekly unavailable");
-          if (remaining > 0) {
-            expiry = setTimeout(() => {
-              expiry = undefined;
-              if (token === generation) context.ui.setStatus("codex-weekly", "Weekly unavailable");
-            }, remaining);
-            expiry.unref();
-          }
+          state.snapshot = snapshot;
+          render();
         } catch {
-          if (token === generation) context.ui.setStatus("codex-weekly", "Weekly unavailable");
+          if (token === generation) {
+            state.snapshot = {};
+            render();
+          }
         } finally {
           if (controller === request) controller = undefined;
         }
@@ -68,7 +80,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   function finished() {
-    if (!ctx || !runPending || !settled || running || prompting || compacting) return;
+    if (!ctx || !runPending || !settled || running || prompting || compacting || !ctx.isIdle()) return;
     const entries = ctx.sessionManager.getBranch();
     let build: { active?: boolean; outputPhase?: boolean; phase?: string } | undefined;
     let assistant: { stopReason?: string } | undefined;
@@ -82,15 +94,18 @@ export default function (pi: ExtensionAPI) {
     if (assistant) refresh();
   }
 
-  pi.on("session_start", (_event, context) => {
+  pi.on("session_start", (event, context) => {
     dispose();
     if (context.mode !== "tui") return;
     ctx = context;
     running = !context.isIdle();
-    runPending = running;
+    runPending = false;
     prompting = compacting = compactionFailed = settled = false;
-    context.ui.setStatus("codex-weekly", "Weekly …");
-    refresh();
+    render();
+    if (event.reason === "startup" && !state.launched) {
+      state.launched = true;
+      refresh();
+    }
   });
   pi.on("agent_start", (_event, context) => {
     if (!ctx || context.mode !== "tui") return;

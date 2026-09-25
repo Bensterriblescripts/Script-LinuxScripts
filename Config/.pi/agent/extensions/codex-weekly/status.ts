@@ -1,10 +1,17 @@
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
-export interface WeeklySnapshot {
+export interface QuotaWindow {
   text: string;
   resetsAt: number;
+}
+
+export interface Snapshot {
+  weekly?: QuotaWindow;
+  short?: QuotaWindow;
+  email?: string;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -24,25 +31,42 @@ function remainingText(used: number): string {
   return `${units / 1000000n}${digits ? `.${digits}` : ""}`;
 }
 
-export function parseWeekly(result: unknown, now = Date.now()): WeeklySnapshot {
+function parseWindow(result: unknown, minutes: number, now: number): QuotaWindow | undefined {
   if (!record(result) || !record(result.rateLimitsByLimitId) || !record(result.rateLimitsByLimitId.codex)) {
-    throw new Error("Weekly limits unavailable");
+    return undefined;
   }
   const bucket = result.rateLimitsByLimitId.codex;
   const windows = [bucket.primary, bucket.secondary].filter(
-    (window): window is Record<string, unknown> => record(window) && window.windowDurationMins === 10080,
+    (window): window is Record<string, unknown> => record(window) && window.windowDurationMins === minutes,
   );
-  if (windows.length !== 1) throw new Error("Weekly window unavailable");
+  if (windows.length !== 1) return undefined;
   const { usedPercent, resetsAt } = windows[0];
   if (typeof usedPercent !== "number" || !Number.isFinite(usedPercent) || usedPercent < 0 || usedPercent > 100 ||
       typeof resetsAt !== "number" || !Number.isSafeInteger(resetsAt) || !Number.isSafeInteger(resetsAt * 1000) ||
       resetsAt * 1000 <= now || resetsAt * 1000 - now > 2147483647) {
-    throw new Error("Invalid weekly window");
+    return undefined;
   }
-  return { text: `Weekly ${remainingText(usedPercent)}% left`, resetsAt };
+  return { text: `${remainingText(usedPercent)}% left`, resetsAt };
 }
 
-export function readWeekly(signal: AbortSignal): Promise<WeeklySnapshot> {
+export function parseLimits(result: unknown, now = Date.now()): Snapshot {
+  return { weekly: parseWindow(result, 10080, now), short: parseWindow(result, 300, now) };
+}
+
+export function parseEmail(result: unknown): string | undefined {
+  if (!record(result) || !record(result.account) || result.account.type !== "chatgpt" ||
+      typeof result.account.email !== "string") return undefined;
+  const email = stripVTControlCharacters(result.account.email).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "").trim();
+  return /^[^\s@]+@[^\s@]+$/u.test(email) ? email : undefined;
+}
+
+export function formatSnapshot(snapshot: Snapshot, now = Date.now()): string {
+  const weekly = snapshot.weekly && snapshot.weekly.resetsAt * 1000 > now ? snapshot.weekly.text : "unavailable";
+  const short = snapshot.short && snapshot.short.resetsAt * 1000 > now ? snapshot.short.text : "unavailable";
+  return [`Weekly ${weekly}`, snapshot.email, `5-hour ${short}`].filter(Boolean).join(" · ");
+}
+
+export function readSnapshot(signal: AbortSignal): Promise<Snapshot> {
   if (signal.aborted) return Promise.reject(new Error("Cancelled"));
   return new Promise((resolve, reject) => {
     const child = spawn(join(homedir(), ".local/bin/codex"), ["app-server", "--stdio"], {
@@ -52,15 +76,17 @@ export function readWeekly(signal: AbortSignal): Promise<WeeklySnapshot> {
     let buffer = "";
     let outputBytes = 0;
     let stderrBytes = 0;
-    let phase = 1;
+    let initialized = false;
+    const outstanding = new Set([2, 3]);
+    const partial: Snapshot = {};
     let finishing = false;
     let closed = false;
     let settled = false;
-    let snapshot: WeeklySnapshot | undefined;
+    let snapshot: Snapshot | undefined;
     let failure: Error | undefined;
     let terminateTimer: ReturnType<typeof setTimeout> | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = setTimeout(() => finish(new Error("Status read timed out")), 12000);
+    const timeout = setTimeout(() => finish(undefined, partial), 12000);
 
     function settle() {
       if (settled) return;
@@ -77,7 +103,7 @@ export function readWeekly(signal: AbortSignal): Promise<WeeklySnapshot> {
       else resolve(snapshot);
     }
 
-    function finish(error?: Error, value?: WeeklySnapshot) {
+    function finish(error?: Error, value?: Snapshot) {
       if (finishing) return;
       finishing = true;
       failure = error;
@@ -145,18 +171,20 @@ export function readWeekly(signal: AbortSignal): Promise<WeeklySnapshot> {
           return finish(new Error("Malformed status response"));
         }
         if (!record(message)) return finish(new Error("Invalid status response"));
-        if (message.id !== phase) continue;
-        if ("error" in message || !record(message.result)) return finish(new Error("Status protocol error"));
-        if (phase === 1) {
-          phase = 2;
+        if (!initialized) {
+          if (message.id !== 1) continue;
+          if ("error" in message || !record(message.result)) return finish(new Error("Status protocol error"));
+          initialized = true;
           send({ method: "initialized" });
           send({ id: 2, method: "account/rateLimits/read" });
+          send({ id: 3, method: "account/read", params: { refreshToken: false } });
         } else {
-          try {
-            finish(undefined, parseWeekly(message.result));
-          } catch {
-            finish(new Error("Weekly limits unavailable"));
+          if (typeof message.id !== "number" || !outstanding.delete(message.id)) continue;
+          if (!("error" in message)) {
+            if (message.id === 2) Object.assign(partial, parseLimits(message.result));
+            if (message.id === 3) partial.email = parseEmail(message.result);
           }
+          if (outstanding.size === 0) finish(undefined, partial);
         }
       }
     });

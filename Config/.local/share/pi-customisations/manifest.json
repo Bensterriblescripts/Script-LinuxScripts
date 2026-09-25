@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "pathMapping": {
-    "home": "/home/ben.nanson@MITO.org.nz",
+    "home": "$HOME",
     "homeRelativePaths": true
   },
   "patchFormat": "unified",
@@ -12,6 +12,19 @@
       "@earendil-works/pi-coding-agent"
     ],
     "nestedDependenciesAndSiblingPackagesVerified": false,
+    "piDependencyAudit": {
+      "installedPackagesComparedWithPublishedArchives": 118,
+      "lockfilePackagesNotInstalled": 25,
+      "contentDifferences": 0,
+      "unlistedInstalledPackages": 0,
+      "missingUpstreamIntegrities": "dependency-integrities.json",
+      "excludedFromComparison": ["documentation", "tests", "examples", "Git metadata", "file modes"]
+    },
+    "webSearchAudit": {
+      "version": "1.6.0",
+      "nonDocumentationFilesComparedWithPublishedArchive": 15,
+      "contentDifferences": 0
+    },
     "excluded": [
       "Git metadata",
       "nested node_modules",
@@ -26,6 +39,9 @@
     {
       "name": "pi-blackhole",
       "version": "0.5.8",
+      "retainedReferenceOnly": true,
+      "enabled": false,
+      "installedAtLatestAudit": false,
       "installationPath": ".pi/agent/npm/node_modules/pi-blackhole",
       "baseline": {
         "tarballUrl": "https://registry.npmjs.org/pi-blackhole/-/pi-blackhole-0.5.8.tgz",
@@ -1582,7 +1598,7 @@
       "license": "MIT",
       "patch": {
         "file": "pi-coding-agent-0.87.1.patch",
-        "sha256": "abaf151a24b0799bc5ac1e226a7019bc6f26c4f4725c6cb74e66a662fe93f8e0"
+        "sha256": "1f760bb61ca529c565edfb309edd19b42bc392168e2b3bc0c6ac0463416b1b1f"
       },
       "affectedFiles": [
         {
@@ -1965,7 +1981,7 @@
             "mode": "0644"
           },
           "custom": {
-            "sha256": "a20d4ea5e87f11f2736c21286a1b77499fe36593ee2f8af3ee70a6178f1188bd",
+            "sha256": "8ff0794f36637958b72e078c9406f010d6ada47dd69e916ecac98914639bb4b4",
             "mode": "0664"
           }
         },
@@ -3219,13 +3235,13 @@
         },
         {
           "path": "dist/core/agent-session.d.ts",
-          "action": "mode",
+          "action": "modify",
           "baseline": {
             "sha256": "ee0b9c2c2fefeef292c9da884b92c0fa5fce73f04bc834655720253d477f391d",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "ee0b9c2c2fefeef292c9da884b92c0fa5fce73f04bc834655720253d477f391d",
+            "sha256": "e16525a87cafe75f9fcb217f22d85f52b8616ec92383b2e36d7e91ca3c3538ab",
             "mode": "0664"
           }
         },
@@ -3243,13 +3259,13 @@
         },
         {
           "path": "dist/core/agent-session.js",
-          "action": "mode",
+          "action": "modify",
           "baseline": {
             "sha256": "5ebfae51db5a900596145159428e7cb57d195af9d54a28f41d4ac8ff1bfd5729",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "5ebfae51db5a900596145159428e7cb57d195af9d54a28f41d4ac8ff1bfd5729",
+            "sha256": "55c7def45f67ece5a86824cc998e0fedeac07c59445329307ac391f8fb9620cb",
             "mode": "0664"
           }
         },
@@ -6183,13 +6199,13 @@
         },
         {
           "path": "dist/core/system-prompt.js",
-          "action": "mode",
+          "action": "modify",
           "baseline": {
             "sha256": "c6b7bc71a76a7901a10bc89f0452508cb3be4bc112ae5f883e4edadc938080aa",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "c6b7bc71a76a7901a10bc89f0452508cb3be4bc112ae5f883e4edadc938080aa",
+            "sha256": "7255e7505e108322e78093985fd618197ff37ea80da804a6d0f752504e773e7a",
             "mode": "0664"
           }
         },
@@ -6327,13 +6343,13 @@
         },
         {
           "path": "dist/core/tools/bash.js",
-          "action": "mode",
+          "action": "modify",
           "baseline": {
             "sha256": "8acde89e7e1ad7ab013ccbf4b2cbfe847422de46f9451ca796f889ab37fee307",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "8acde89e7e1ad7ab013ccbf4b2cbfe847422de46f9451ca796f889ab37fee307",
+            "sha256": "bee88dacbe9f84f53192d18ec03b627df7ef02a955bcc939158ba6381ab56066",
             "mode": "0664"
           }
         },
@@ -6423,13 +6439,13 @@
         },
         {
           "path": "dist/core/tools/edit.js",
-          "action": "mode",
+          "action": "modify",
           "baseline": {
             "sha256": "e2e7081b28b170eb11bdd8d4fc295c491d581364cd57ae0670f24031b4057265",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "e2e7081b28b170eb11bdd8d4fc295c491d581364cd57ae0670f24031b4057265",
+            "sha256": "92e81cc8d61568f780de47884c157c24eeb43d685242c24753e1c4c3585d3de4",
             "mode": "0664"
           }
         },
@@ -6855,13 +6871,13 @@
         },
         {
           "path": "dist/core/tools/read.js",
-          "action": "mode",
+          "action": "modify",
           "baseline": {
             "sha256": "6be7949968968f42a17ccbe341008db3f061cc1d757b42ff1d269bb0d4cc66f1",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "6be7949968968f42a17ccbe341008db3f061cc1d757b42ff1d269bb0d4cc66f1",
+            "sha256": "8b6d84e7e83bae4f20ab1318b018c5344e3c84e6baedfb475fe92795e31bd9d2",
             "mode": "0664"
           }
         },
@@ -7431,13 +7447,13 @@
         },
         {
           "path": "dist/core/tools/write.js",
-          "action": "mode",
+          "action": "modify",
           "baseline": {
             "sha256": "0e9daec15a5001cafe651db391aed63a463c346d29b60e6dc91ef09477fd22f5",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "0e9daec15a5001cafe651db391aed63a463c346d29b60e6dc91ef09477fd22f5",
+            "sha256": "2696150b4022ba728bb6de0bccbbfca55064c924f3eb3c4dcb8de04e26ae056d",
             "mode": "0664"
           }
         },
@@ -10275,13 +10291,13 @@
         },
         {
           "path": "dist/modes/interactive/interactive-mode.js",
-          "action": "mode",
+          "action": "modify",
           "baseline": {
             "sha256": "7dc366e8609d7d1e81fb85952e466aea9933b13e74842c2a9b9df678d267d12e",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "7dc366e8609d7d1e81fb85952e466aea9933b13e74842c2a9b9df678d267d12e",
+            "sha256": "3423cd9ff416f1cc0c6eab767e7855a155bc49c1559245f2377b609bfb52a6bf",
             "mode": "0664"
           }
         },
@@ -11146,6 +11162,54 @@
           },
           "custom": {
             "sha256": "c5af6c03e68bbcd9736016108b5b3354845beb54d06bc34d85c8f7309af985f9",
+            "mode": "0664"
+          }
+        },
+        {
+          "path": "dist/utils/changelog.d.ts",
+          "action": "mode",
+          "baseline": {
+            "sha256": "56edd56f92b87882017c53e599f500e2bfc984f4fda326b9e049bdb4fa1bcdf9",
+            "mode": "0644"
+          },
+          "custom": {
+            "sha256": "56edd56f92b87882017c53e599f500e2bfc984f4fda326b9e049bdb4fa1bcdf9",
+            "mode": "0664"
+          }
+        },
+        {
+          "path": "dist/utils/changelog.d.ts.map",
+          "action": "mode",
+          "baseline": {
+            "sha256": "1df54401e40e2f8725476019351172e7317b6cc35e2a09fde46f407b75add529",
+            "mode": "0644"
+          },
+          "custom": {
+            "sha256": "1df54401e40e2f8725476019351172e7317b6cc35e2a09fde46f407b75add529",
+            "mode": "0664"
+          }
+        },
+        {
+          "path": "dist/utils/changelog.js",
+          "action": "mode",
+          "baseline": {
+            "sha256": "0212307224fdf3a29a34f6cc25d911c90b231d66611335cee2123ab4627f5531",
+            "mode": "0644"
+          },
+          "custom": {
+            "sha256": "0212307224fdf3a29a34f6cc25d911c90b231d66611335cee2123ab4627f5531",
+            "mode": "0664"
+          }
+        },
+        {
+          "path": "dist/utils/changelog.js.map",
+          "action": "mode",
+          "baseline": {
+            "sha256": "85c157a058959640efd68d0959ec31ab763de24fbf9e90528b1eb2f26153b43d",
+            "mode": "0644"
+          },
+          "custom": {
+            "sha256": "85c157a058959640efd68d0959ec31ab763de24fbf9e90528b1eb2f26153b43d",
             "mode": "0664"
           }
         },
@@ -12686,1310 +12750,14 @@
           }
         },
         {
-          "path": "examples/extensions/auto-commit-on-exit.ts",
+          "path": "npm-shrinkwrap.json",
           "action": "mode",
           "baseline": {
-            "sha256": "b89b5cb4c6f1f07b0b4291ab85a3c5f025d7d31ebb285821716502452b46af62",
+            "sha256": "e29f0b61463e48a81ca173eaeb462b0bdd03d04b863168895daae3816d62c470",
             "mode": "0644"
           },
           "custom": {
-            "sha256": "b89b5cb4c6f1f07b0b4291ab85a3c5f025d7d31ebb285821716502452b46af62",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/bash-spawn-hook.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "c79c87653e20ac6bd9f4813aa4bb01a483b3637700fa2edda220703958532662",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "c79c87653e20ac6bd9f4813aa4bb01a483b3637700fa2edda220703958532662",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/bookmark.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "a71d9449d415ad75c9f3d0d13afde129b9bea2d695b889566db17ecfca256d79",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "a71d9449d415ad75c9f3d0d13afde129b9bea2d695b889566db17ecfca256d79",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/border-status-editor.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "ccbbfddd4ff402432293b7adb21f58e869f37a5d12d4da81cea10cc5fc2311cd",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "ccbbfddd4ff402432293b7adb21f58e869f37a5d12d4da81cea10cc5fc2311cd",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/built-in-tool-renderer.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "cfbe8f9b0904f9d4de295ea136ce45fc71f207ca98583807efd8ccb0d1d6b940",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "cfbe8f9b0904f9d4de295ea136ce45fc71f207ca98583807efd8ccb0d1d6b940",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/claude-rules.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "8a935f14f62c1c1a3e937f5c912c2215e25aa5fa591716e23c86224ce1dc34cd",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "8a935f14f62c1c1a3e937f5c912c2215e25aa5fa591716e23c86224ce1dc34cd",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/commands.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "36716b53da169936c7e1360a4fde1e2fc0c3356a6505f177235f09c5538c6e4f",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "36716b53da169936c7e1360a4fde1e2fc0c3356a6505f177235f09c5538c6e4f",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/confirm-destructive.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "55502f82109df07e922ef3ec41af1b1a5ed33d4d6d56076654ab2bc88e2e0888",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "55502f82109df07e922ef3ec41af1b1a5ed33d4d6d56076654ab2bc88e2e0888",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/custom-compaction.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "ea797b3508fd8600526f381466e8b08bb84f3d234932a9d6ce512698527d0aa9",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "ea797b3508fd8600526f381466e8b08bb84f3d234932a9d6ce512698527d0aa9",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/custom-footer.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "1e5f17bec95a48d407fbcc092faf7e1f6021c30cee4a66ec09bc120412292cb2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "1e5f17bec95a48d407fbcc092faf7e1f6021c30cee4a66ec09bc120412292cb2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/custom-header.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "5de09cf861d3965201991d6e837d6b68e8a2e80cb89279ee9177cc05d31f723d",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "5de09cf861d3965201991d6e837d6b68e8a2e80cb89279ee9177cc05d31f723d",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/custom-provider-anthropic/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "52bb733e1a25d9e175a644e6a6e17bbf61071beecf0f2903869baa9579a05ab3",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "52bb733e1a25d9e175a644e6a6e17bbf61071beecf0f2903869baa9579a05ab3",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/custom-provider-anthropic/package.json",
-          "action": "mode",
-          "baseline": {
-            "sha256": "c6ee1f0de9a055a0286752e98fea32837d06c0bd373d7a99f87e1a02cf2ac9a4",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "c6ee1f0de9a055a0286752e98fea32837d06c0bd373d7a99f87e1a02cf2ac9a4",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/custom-provider-gitlab-duo/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "0c4adac82eff25fef23223af77e11cd53535834fece9731009b125446e213158",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "0c4adac82eff25fef23223af77e11cd53535834fece9731009b125446e213158",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/custom-provider-gitlab-duo/package.json",
-          "action": "mode",
-          "baseline": {
-            "sha256": "6f3d8ab649bcc0794e160c570ef06446836c0cec7889d7dbff92ae317cc27699",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "6f3d8ab649bcc0794e160c570ef06446836c0cec7889d7dbff92ae317cc27699",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/dirty-repo-guard.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "0037a69abdf4cf98181db799bef5bdee8981861315eb82ddab78126c2b0f13c4",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "0037a69abdf4cf98181db799bef5bdee8981861315eb82ddab78126c2b0f13c4",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/doom-component.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "d95dc47c92db0fdc5b0e0b56a277c67f277012d3f7296df745d8a93f64d5a42e",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "d95dc47c92db0fdc5b0e0b56a277c67f277012d3f7296df745d8a93f64d5a42e",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/doom-engine.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "706e43f70bd374b73928e5a44d196d1dd5c03d93979d08bdfc01d049b5083855",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "706e43f70bd374b73928e5a44d196d1dd5c03d93979d08bdfc01d049b5083855",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/doom-keys.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "e8bd99a4ce90dd44ad120c58f3b2ba7bc0b0c662bcdc4ed4994d059130be9fdd",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "e8bd99a4ce90dd44ad120c58f3b2ba7bc0b0c662bcdc4ed4994d059130be9fdd",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/doom/build.sh",
-          "action": "mode",
-          "baseline": {
-            "sha256": "ab09c9b6dc98ea7c1fa8e74c13981ce69b698c01aec77309c5c7d40ad114d38c",
-            "mode": "0755"
-          },
-          "custom": {
-            "sha256": "ab09c9b6dc98ea7c1fa8e74c13981ce69b698c01aec77309c5c7d40ad114d38c",
-            "mode": "0775"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/doom/build/doom.js",
-          "action": "mode",
-          "baseline": {
-            "sha256": "c3147cf4881c88b4210c017c26828f52aff83f0c4db27d7dad3fe6cda9ade1fb",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "c3147cf4881c88b4210c017c26828f52aff83f0c4db27d7dad3fe6cda9ade1fb",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/doom/build/doom.wasm",
-          "action": "mode",
-          "baseline": {
-            "sha256": "571d161956593508cf4ade732ae93753f00484bb526667a8676571cca14dec7d",
-            "mode": "0755"
-          },
-          "custom": {
-            "sha256": "571d161956593508cf4ade732ae93753f00484bb526667a8676571cca14dec7d",
-            "mode": "0775"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/doom/doomgeneric_pi.c",
-          "action": "mode",
-          "baseline": {
-            "sha256": "98210909e1e7dee71cbbdba64f1db4bebd88b504e861ee36ea42093c59b251a1",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "98210909e1e7dee71cbbdba64f1db4bebd88b504e861ee36ea42093c59b251a1",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "f89818dd75c7d8970458b1dbb9c5e85fea9b86534fd740c898c1f6f9c9f9ceba",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "f89818dd75c7d8970458b1dbb9c5e85fea9b86534fd740c898c1f6f9c9f9ceba",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/doom-overlay/wad-finder.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "20254888262081bf96932253bfd346971deefa48d8df011fd3baa7aa2d653b7d",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "20254888262081bf96932253bfd346971deefa48d8df011fd3baa7aa2d653b7d",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/dynamic-resources/dynamic.json",
-          "action": "mode",
-          "baseline": {
-            "sha256": "8c15e4120746d3c69197db1d67d03ce796dda92610c65602d967b546ae1e2dc2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "8c15e4120746d3c69197db1d67d03ce796dda92610c65602d967b546ae1e2dc2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/dynamic-resources/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "dfbc49418fe46ebc9696fa335709df2ed0d4c4703da8c1ad0eb317d11fce8433",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "dfbc49418fe46ebc9696fa335709df2ed0d4c4703da8c1ad0eb317d11fce8433",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/dynamic-tools.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "4394098c11f98ffc26e2487acda2e09b9467ef9ff5867def7273cb0c82a2b6c0",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "4394098c11f98ffc26e2487acda2e09b9467ef9ff5867def7273cb0c82a2b6c0",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/entry-renderer.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "e4c01fcf382972d570ebf37d044e32065eae062fe70987b1b885d75d46aa0b11",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "e4c01fcf382972d570ebf37d044e32065eae062fe70987b1b885d75d46aa0b11",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/event-bus.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "1185942b7afd83692d9e8da029e8594d702157398c693ec8b3ddb02b0780828a",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "1185942b7afd83692d9e8da029e8594d702157398c693ec8b3ddb02b0780828a",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/file-trigger.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "6f5fc3dc8fa387d8ca6973786c521feb94da58838b0e171a881fb6b3a5243ac0",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "6f5fc3dc8fa387d8ca6973786c521feb94da58838b0e171a881fb6b3a5243ac0",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/git-checkpoint.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "b60c85f797091a1f21ccb2a998027c6229fe995bdd62dbb1cdcc22946768f40b",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "b60c85f797091a1f21ccb2a998027c6229fe995bdd62dbb1cdcc22946768f40b",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/git-merge-and-resolve.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "a3c077c87544122abe83b275f3d527f60c80c87f460ea2499d66bde9b4880133",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "a3c077c87544122abe83b275f3d527f60c80c87f460ea2499d66bde9b4880133",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/github-issue-autocomplete.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "4646ef360e57aa98c787ba21ca2f2e8acb3db30c4db0503e64cdbea4a4c2ac65",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "4646ef360e57aa98c787ba21ca2f2e8acb3db30c4db0503e64cdbea4a4c2ac65",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/gondolin/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "9a9897639de8127a2abe6bb0d00f0005cd9e9cf9d51fd15893a827e67326bf62",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "9a9897639de8127a2abe6bb0d00f0005cd9e9cf9d51fd15893a827e67326bf62",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/gondolin/package.json",
-          "action": "mode",
-          "baseline": {
-            "sha256": "b9c229b30d4ed9ef53fc9acef137c9225f575f8d1739ececb243b6681c7b1069",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "b9c229b30d4ed9ef53fc9acef137c9225f575f8d1739ececb243b6681c7b1069",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/handoff.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "ea07b6f680357b677d0f43f0016961ee8cb1331d37ae113e9466a3acffb2e381",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "ea07b6f680357b677d0f43f0016961ee8cb1331d37ae113e9466a3acffb2e381",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/hello.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "0aa4e9800c2526914d4c1edb00b2cfa9bd9dd6da5218289994cccd5f5bfa4934",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "0aa4e9800c2526914d4c1edb00b2cfa9bd9dd6da5218289994cccd5f5bfa4934",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/hidden-thinking-label.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "179dc3704b5c563b49a7f4577222bf9bbaa5becf98b85c75e56ab26c001c5b22",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "179dc3704b5c563b49a7f4577222bf9bbaa5becf98b85c75e56ab26c001c5b22",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/inline-bash.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "69b9dfc34e7b1ada9afe10cda3384b0b1a6f3c3a47da5fb7d16f914399b023d4",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "69b9dfc34e7b1ada9afe10cda3384b0b1a6f3c3a47da5fb7d16f914399b023d4",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/input-transform-streaming.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "5c251ebda6163c8279e3c6d5f0aee56421ed150255dbb954f08ca7d2280b3ad2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "5c251ebda6163c8279e3c6d5f0aee56421ed150255dbb954f08ca7d2280b3ad2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/input-transform.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "cf0f65d610631ca75d18aae1c8f1408139702f674cb2835f8c009b943776474b",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "cf0f65d610631ca75d18aae1c8f1408139702f674cb2835f8c009b943776474b",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/interactive-shell.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "36a7efb5b132e666c643129ce09c3f83f56aed9924563e6b7269e0e126611ecc",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "36a7efb5b132e666c643129ce09c3f83f56aed9924563e6b7269e0e126611ecc",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/mac-system-theme.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "d7349bae999a798c71b283165e06d0142d41b0264bfdad11ddcb1ec8b62f8710",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "d7349bae999a798c71b283165e06d0142d41b0264bfdad11ddcb1ec8b62f8710",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/message-renderer.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "bedc198df5215c0a758e0743224599003630741a4ff72d4327837ce309e5ec8c",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "bedc198df5215c0a758e0743224599003630741a4ff72d4327837ce309e5ec8c",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/minimal-mode.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "8f57e0b28ff8d8b9ac9a755dd8a60c0fbdacba9040f4fd04e37b5f285d4c5d11",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "8f57e0b28ff8d8b9ac9a755dd8a60c0fbdacba9040f4fd04e37b5f285d4c5d11",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/modal-editor.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "4742283930949fad1920359540aa9d42c833d2d24eaa49564bfc08f90e328b0d",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "4742283930949fad1920359540aa9d42c833d2d24eaa49564bfc08f90e328b0d",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/model-status.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "b6c073c0bdf26ac17e2fed01d02b6447fd4e2763b7b6ca2f2b493574ced25247",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "b6c073c0bdf26ac17e2fed01d02b6447fd4e2763b7b6ca2f2b493574ced25247",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/notify.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "70e4333e09ce00d546c116fd2e918abf7616c70b5da6e88ba8ee21a326afd483",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "70e4333e09ce00d546c116fd2e918abf7616c70b5da6e88ba8ee21a326afd483",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/permission-gate.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "e32086ba9dd9b4ba0fd308b65241d9affa0b5ecd3f90ef7ea1b9f2b30cab8cc1",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "e32086ba9dd9b4ba0fd308b65241d9affa0b5ecd3f90ef7ea1b9f2b30cab8cc1",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/pirate.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "dd6ce684bbe7630e4a749fe133ef8b8b875adbc7e31284b17fe0b8157d51e013",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "dd6ce684bbe7630e4a749fe133ef8b8b875adbc7e31284b17fe0b8157d51e013",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/plan-mode/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "90fae53e2fada97165f7488520bd54f3cbfe5d2c7e4cfd3bd2aa07ee796e61e8",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "90fae53e2fada97165f7488520bd54f3cbfe5d2c7e4cfd3bd2aa07ee796e61e8",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/plan-mode/utils.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "12ea28d57cc55e68e8d52a2f1d16df8b2e7f2749cd694d41453028002a2bdad9",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "12ea28d57cc55e68e8d52a2f1d16df8b2e7f2749cd694d41453028002a2bdad9",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/preset.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "7942b7f933f97bcc29024a87f8526969413ba6f87b0bec537648a2926a0a4e29",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "7942b7f933f97bcc29024a87f8526969413ba6f87b0bec537648a2926a0a4e29",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/project-trust.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "78781c1f2a1613cf31c02a29ff6a6abd86b60bdf34343465e46cd85c01491578",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "78781c1f2a1613cf31c02a29ff6a6abd86b60bdf34343465e46cd85c01491578",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/prompt-customizer.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "429546f46795bccda4078deace5729b8230f6103807d424eaf71817c6e07da0a",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "429546f46795bccda4078deace5729b8230f6103807d424eaf71817c6e07da0a",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/protected-paths.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "9ca66b1f3b1b9a61cc5ddc660f92cca2ea66c4264a1bdb6b00e0da5844399fe2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "9ca66b1f3b1b9a61cc5ddc660f92cca2ea66c4264a1bdb6b00e0da5844399fe2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/provider-payload.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "e0016077798098f528b1129954c30a28809a1513924d9c2e0efda9328d503a49",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "e0016077798098f528b1129954c30a28809a1513924d9c2e0efda9328d503a49",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/qna.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "a639a65a486fd05a42afcf14aa59dc32e505e41ada43869167ddfd789a3c7da6",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "a639a65a486fd05a42afcf14aa59dc32e505e41ada43869167ddfd789a3c7da6",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/question.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "a1625d2c72a65d859154a7e66bef222d48ca9e3654a8bb910829ad350378a4c4",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "a1625d2c72a65d859154a7e66bef222d48ca9e3654a8bb910829ad350378a4c4",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/questionnaire.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "3f1f719d81152ff013f5d36a97cc3976388d43f2d89bff0f19827d3443d903e6",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "3f1f719d81152ff013f5d36a97cc3976388d43f2d89bff0f19827d3443d903e6",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/rainbow-editor.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "f95f17ba8a0376180bd23510c20151e83aadc74142e989f14227bf5c4196883f",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "f95f17ba8a0376180bd23510c20151e83aadc74142e989f14227bf5c4196883f",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/reload-runtime.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "911f26b872860a551572fa1d94d251ddd476d4ea9483b6052e9658d2784b38fc",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "911f26b872860a551572fa1d94d251ddd476d4ea9483b6052e9658d2784b38fc",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/rpc-demo.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "3d54a396eee12eb04ea12d0ea03716a6edd3e8743502b6a529e3b8d429ae640d",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "3d54a396eee12eb04ea12d0ea03716a6edd3e8743502b6a529e3b8d429ae640d",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/sandbox/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "b5e527aac27254002f27b8bb9de7bc62e242e39eeb7c963683096039e0aa173e",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "b5e527aac27254002f27b8bb9de7bc62e242e39eeb7c963683096039e0aa173e",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/sandbox/package.json",
-          "action": "mode",
-          "baseline": {
-            "sha256": "6d27d552003583073113dda5758917db5c66f20ed3b82e0a047f72cd4a860fb2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "6d27d552003583073113dda5758917db5c66f20ed3b82e0a047f72cd4a860fb2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/send-user-message.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "9261e433c782f354530105e1c9723a19798868f72fd1f5d68af3a4624ad7e446",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "9261e433c782f354530105e1c9723a19798868f72fd1f5d68af3a4624ad7e446",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/session-name.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "a0b9fd94e2cc827931150cc409238b473da635ab1a1cddce633cae5937a3ae24",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "a0b9fd94e2cc827931150cc409238b473da635ab1a1cddce633cae5937a3ae24",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/shutdown-command.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "68dc7f9561aa9b1c0f39cae19c0f41d56171a99875972e5998de3caa75f96e09",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "68dc7f9561aa9b1c0f39cae19c0f41d56171a99875972e5998de3caa75f96e09",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/snake.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "3ef506ab52927e866fad096f83b7cbfd0eb50e1504dcabf1b1eb28a06745c937",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "3ef506ab52927e866fad096f83b7cbfd0eb50e1504dcabf1b1eb28a06745c937",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/space-invaders.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "43281ae25bea645d44db01234f24df80e2f866771d02de0b416ab32fb3883a1f",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "43281ae25bea645d44db01234f24df80e2f866771d02de0b416ab32fb3883a1f",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/ssh.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "c03bdef919457013e3798d10250f34255742fd3dc79885ac3d321b34f6a1149d",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "c03bdef919457013e3798d10250f34255742fd3dc79885ac3d321b34f6a1149d",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/status-line.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "26e27b1158e980551f63f46e55dad055ac613779c2b8c39df4cddc11be26103d",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "26e27b1158e980551f63f46e55dad055ac613779c2b8c39df4cddc11be26103d",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/structured-output.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "72a3a665ce3de1419c837db6eb8a0e7a890310c6e02e4d59c454e5c9514c15ec",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "72a3a665ce3de1419c837db6eb8a0e7a890310c6e02e4d59c454e5c9514c15ec",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/subagent/agents.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "cc85ecd33b89aa575bea3d2a9a9da7654a6305da4de02e5041aa5342a1de29b4",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "cc85ecd33b89aa575bea3d2a9a9da7654a6305da4de02e5041aa5342a1de29b4",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/subagent/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "4facaa61c9c781748dd000eb5d2ec0a75289986d1a6e11ce13971ca5653dc252",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "4facaa61c9c781748dd000eb5d2ec0a75289986d1a6e11ce13971ca5653dc252",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/summarize.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "9c75e838071773d5bacce27ac8c5305160c56958018884f960c3db96b3d09368",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "9c75e838071773d5bacce27ac8c5305160c56958018884f960c3db96b3d09368",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/system-prompt-header.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "aa97f1add4fe347b3fc37cd3709950a105b0db5d6cdaf19325b58a9fbfd05223",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "aa97f1add4fe347b3fc37cd3709950a105b0db5d6cdaf19325b58a9fbfd05223",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/tic-tac-toe.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "479597f4e76ef1eae3dae71ec9d5c26978c5b9221f950e3e134078c5b532314b",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "479597f4e76ef1eae3dae71ec9d5c26978c5b9221f950e3e134078c5b532314b",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/timed-confirm.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "c35304599e6f07238ef5472efe9c3f2fef2a022f801750ed792ef9061c7de10f",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "c35304599e6f07238ef5472efe9c3f2fef2a022f801750ed792ef9061c7de10f",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/titlebar-spinner.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "ec56e7edf954966b5991bcad63141be1a09d17753cdd0c59efca1b9e649dadf2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "ec56e7edf954966b5991bcad63141be1a09d17753cdd0c59efca1b9e649dadf2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/todo.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "e46824d00217e25242c186d41837cc84ca81b23f978500323448502a9a424ee2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "e46824d00217e25242c186d41837cc84ca81b23f978500323448502a9a424ee2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/tool-override.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "5d3cc796311a16132db810fcd9e437c16abd46978b723b9120734e57cc545726",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "5d3cc796311a16132db810fcd9e437c16abd46978b723b9120734e57cc545726",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/tools.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "5eaebc40cffe885fee25c95e3d8aec79cfbd595b6eac8ac5a6de6c4afec3d5d8",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "5eaebc40cffe885fee25c95e3d8aec79cfbd595b6eac8ac5a6de6c4afec3d5d8",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/trigger-compact.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "92c3b831f9f7bf01a3e0a2df11f4e404f5ac5843000b94e8340a5d78f3cb3add",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "92c3b831f9f7bf01a3e0a2df11f4e404f5ac5843000b94e8340a5d78f3cb3add",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/truncated-tool.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "4ed5fbeb6da53eab8d1e04721d77961b8d1b3bf5e11d1512a17fc5a3f58f9955",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "4ed5fbeb6da53eab8d1e04721d77961b8d1b3bf5e11d1512a17fc5a3f58f9955",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/widget-placement.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "ffabd33cf58efb908de2025aac4cb41daf13dbeee24b5ad8dcd0361b43eff6d7",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "ffabd33cf58efb908de2025aac4cb41daf13dbeee24b5ad8dcd0361b43eff6d7",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/with-deps/index.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "8d4dbc7028c891eac7f0386d25eecea3e9ac0de7fd841b5bb08137e2ec5ab443",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "8d4dbc7028c891eac7f0386d25eecea3e9ac0de7fd841b5bb08137e2ec5ab443",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/with-deps/package.json",
-          "action": "mode",
-          "baseline": {
-            "sha256": "57e444872d3cff542e62e6df3c88fb7d97a0ee6804597a37c84de9aae7a0a238",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "57e444872d3cff542e62e6df3c88fb7d97a0ee6804597a37c84de9aae7a0a238",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/extensions/working-indicator.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "e88295d765b78fd6aac0e93db92b183ee9b7103dc21577e3c5a42665dfad032c",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "e88295d765b78fd6aac0e93db92b183ee9b7103dc21577e3c5a42665dfad032c",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/plugins/pi-example-plugin/package.json",
-          "action": "mode",
-          "baseline": {
-            "sha256": "f608b21d7170664772ac572638ec1fb7043eb35bc1aab7fc78973dba95d6cee2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "f608b21d7170664772ac572638ec1fb7043eb35bc1aab7fc78973dba95d6cee2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/plugins/pi-example-plugin/src/contract.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "45e1559476c018ad8d98d4506ec8cf63fd8193b1146c69257bbcbe073b9e407d",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "45e1559476c018ad8d98d4506ec8cf63fd8193b1146c69257bbcbe073b9e407d",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/plugins/pi-example-plugin/src/session.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "0f9e032a72f070902bbaedd61dde5dd7f8d4d83a09761c23a6f64fb1cb91b6b8",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "0f9e032a72f070902bbaedd61dde5dd7f8d4d83a09761c23a6f64fb1cb91b6b8",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/plugins/pi-example-plugin/src/tui.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "e7ba4a142edb3cea671a07886c5b11429f48a1673cf7668043aade767e1bcdbb",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "e7ba4a142edb3cea671a07886c5b11429f48a1673cf7668043aade767e1bcdbb",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/rpc-client.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "742cc247165694620164c115a9a9495ec85a8e1a2efdfd31725b892a76396596",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "742cc247165694620164c115a9a9495ec85a8e1a2efdfd31725b892a76396596",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/rpc-extension-ui.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "7f92a28cac41d4c9915b44ef9ad35775c17358d8e3b3f8a07cd9bc0d91ff9492",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "7f92a28cac41d4c9915b44ef9ad35775c17358d8e3b3f8a07cd9bc0d91ff9492",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/01-minimal.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "ffe5215e36f750f5ca7146cc7dfa5be36461292036d55b8db652b4d26331f351",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "ffe5215e36f750f5ca7146cc7dfa5be36461292036d55b8db652b4d26331f351",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/02-custom-model.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "dccc8dbdb1742ea00beeed87d302b8a23ac7f7e36a0b6a4c43b283c21be0ee55",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "dccc8dbdb1742ea00beeed87d302b8a23ac7f7e36a0b6a4c43b283c21be0ee55",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/03-custom-prompt.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "d6db1f36a8e04466d9cbcc24ffb6fe0697858aa6c0e5013d5d90f12798314ef5",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "d6db1f36a8e04466d9cbcc24ffb6fe0697858aa6c0e5013d5d90f12798314ef5",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/04-skills.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "4cbf189bf88d14155281349d4d39cc236066d98095aae2d184d4ba7267ab5e42",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "4cbf189bf88d14155281349d4d39cc236066d98095aae2d184d4ba7267ab5e42",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/05-tools.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "5df5f9577b343d22d072d839341916536299c8191dc66c6c801a8bbddda23544",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "5df5f9577b343d22d072d839341916536299c8191dc66c6c801a8bbddda23544",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/06-extensions.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "8e01ee409200b6516e9a6a0d9f3b3f61d2ad78aaaa18bd2ef9a8f77820d149b2",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "8e01ee409200b6516e9a6a0d9f3b3f61d2ad78aaaa18bd2ef9a8f77820d149b2",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/07-context-files.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "37bd18a284e961903d646e0cd1abdeda72cd968dbe4f40892e8d345a66916b36",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "37bd18a284e961903d646e0cd1abdeda72cd968dbe4f40892e8d345a66916b36",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/08-prompt-templates.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "a1b314988f1f5b2e61c80c19c79b68630a2f3c443008a200376286710a2744ed",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "a1b314988f1f5b2e61c80c19c79b68630a2f3c443008a200376286710a2744ed",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/09-api-keys-and-oauth.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "d1d2b1bd4e57a3b2ab6f910068e8382759d12a94fbecf1332e96a9ebe4683eb4",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "d1d2b1bd4e57a3b2ab6f910068e8382759d12a94fbecf1332e96a9ebe4683eb4",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/10-settings.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "558f82b9d0655935e6a28ec09f6c35f0f9593f8b034f25d45400c02bc77a778a",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "558f82b9d0655935e6a28ec09f6c35f0f9593f8b034f25d45400c02bc77a778a",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/11-sessions.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "538c7028bf6823c84be930eb6745731f2c87ba05a45df2d86d93e66f01674576",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "538c7028bf6823c84be930eb6745731f2c87ba05a45df2d86d93e66f01674576",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/12-full-control.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "3cf794d470ddbde4504ae965d24a23c42378d1ac86033522e46907ac05518343",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "3cf794d470ddbde4504ae965d24a23c42378d1ac86033522e46907ac05518343",
-            "mode": "0664"
-          }
-        },
-        {
-          "path": "examples/sdk/13-session-runtime.ts",
-          "action": "mode",
-          "baseline": {
-            "sha256": "0e9f408720a561a62b2630eccb18ece49f9dba567dc65494757da0a91608827a",
-            "mode": "0644"
-          },
-          "custom": {
-            "sha256": "0e9f408720a561a62b2630eccb18ece49f9dba567dc65494757da0a91608827a",
+            "sha256": "e29f0b61463e48a81ca173eaeb462b0bdd03d04b863168895daae3816d62c470",
             "mode": "0664"
           }
         },
@@ -14011,7 +12779,7 @@
         "installation_bookkeeping": 5,
         "tests_or_runtime_state": 4
       },
-      "contentDifferences": 2,
+      "contentDifferences": 10,
       "comparedFiles": 1108,
       "licenseFile": null,
       "licenseMaterialStatus": "No standalone license or notice file is present in the published package payload.",

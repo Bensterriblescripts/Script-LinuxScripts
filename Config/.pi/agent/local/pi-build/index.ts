@@ -1,6 +1,8 @@
 import type { ExtensionAPI, ExtensionContext, KeybindingsManager, RegisteredCommand } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { clipboardPaths, prepareClipboardImages } from "./clipboard-images.ts";
+import { collectFileContext, fileContextContent, type FileContext } from "./file-context.ts";
+import { registerBuildWorkflow, WORKFLOW_ENTRY } from "./workflow.ts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -10,6 +12,7 @@ import {
 	Editor,
 	Markdown,
 	matchesKey,
+	parseKey,
 	isKeyRelease,
 	Text,
 	truncateToWidth,
@@ -22,7 +25,7 @@ import { Type } from "typebox";
 
 type Intent = "auto" | "plan" | "learn" | "research" | "content" | "decide";
 type ResearchMode = "off" | "ask" | "auto";
-type BuildPhase = "research" | "interview" | "output-selection" | "output";
+type BuildPhase = "research" | "interview";
 
 interface BuildAlternative {
 	value: string;
@@ -31,7 +34,7 @@ interface BuildAlternative {
 }
 
 interface BuildState {
-	pendingPlan?: { path: string; markdown: string };
+	pendingPlan?: { path: string; markdown: string; fileContext: FileContext };
 	active: boolean;
 	hasPriorConversation: boolean;
 	topic: string;
@@ -40,14 +43,6 @@ interface BuildState {
 	researchMode: ResearchMode;
 	checkpoint: string;
 	phase: BuildPhase;
-	outputPhase: boolean;
-	outputSelection?: {
-		readinessRationale: string;
-		recommendedOutputs: string;
-		recommendedStrategy: string;
-		question: string;
-	};
-	approvedOutputPlan?: string;
 	alternatives: BuildAlternative[];
 	currentQuestion?: string;
 	alternativesPresented?: boolean;
@@ -68,9 +63,6 @@ const DEFAULT_STATE: BuildState = {
 	researchMode: "auto",
 	checkpoint: "",
 	phase: "interview",
-	outputPhase: false,
-	outputSelection: undefined,
-	approvedOutputPlan: undefined,
 	alternatives: [],
 	currentQuestion: undefined,
 	updatedAt: Date.now(),
@@ -91,7 +83,6 @@ function describeOutputPreference(state: BuildState): string {
 }
 
 function currentPhase(state: BuildState): BuildPhase {
-	if (state.outputPhase) return "output";
 	return state.phase ?? "interview";
 }
 
@@ -157,11 +148,7 @@ function statusMarkdown(state: BuildState): string {
 - Research: ${state.researchMode}
 - Phase: ${phaseLabel(state)}
 - Output preference: ${describeOutputPreference(state)}
-${state.outputSelection ? `- Output selection rationale: ${state.outputSelection.readinessRationale}
-- Recommended outputs: ${state.outputSelection.recommendedOutputs}
-- Recommended strategy: ${state.outputSelection.recommendedStrategy}
-` : ""}${state.approvedOutputPlan ? `- Approved output plan: ${state.approvedOutputPlan}
-` : ""}- Current question: ${state.currentQuestion || "(none)"}
+- Current question: ${state.currentQuestion || "(none)"}
 - Answer alternatives: ${state.alternatives.length ? state.alternatives.map((a) => a.label).join(" | ") : "(none set)"}
 - Checkpoint last updated: ${state.updatedAt ? new Date(state.updatedAt).toLocaleString() : "never"}
 ${state.lastChangeSummary ? `- Last checkpoint change: ${state.lastChangeSummary}
@@ -179,6 +166,15 @@ function normalizeAlternatives(alternatives: BuildAlternative[]): BuildAlternati
 		.slice(0, 5);
 }
 
+function literalOptionText(text: string): string {
+	return text.replace(/[\x00-\x09\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g,
+		(character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
+function optionText(alternative: BuildAlternative): string {
+	return `${literalOptionText(alternative.label)}${alternative.description === undefined ? "" : `\n${literalOptionText(alternative.description)}`}\n${literalOptionText(alternative.value)}`;
+}
+
 const FOCUS_SHORTCUT = "alt+g";
 
 interface BuildChoices {
@@ -186,11 +182,13 @@ interface BuildChoices {
 	focused: boolean;
 	selected: number;
 	submitting: boolean;
+	scroll: number;
+	pageSize: number;
 	submittedValue?: string;
 }
 
 function emptyChoices(): BuildChoices {
-	return { ready: false, focused: false, selected: 0, submitting: false };
+	return { ready: false, focused: false, selected: 0, submitting: false, scroll: 0, pageSize: 1 };
 }
 
 class BuildReplyEditor extends CustomEditor {
@@ -241,12 +239,18 @@ class BuildReplyEditor extends CustomEditor {
 		}
 	}
 
+	private seedHighlightedAnswer(state: BuildState, choices: BuildChoices): void {
+		const alternative = choices.focused ? state.alternatives[choices.selected] : undefined;
+		if (alternative) this.setText(alternative.value);
+	}
+
 	private handleBuildInput(data: string): void {
 		const state = this.getBuildState();
 		const choices = this.getChoices();
 		const available = !this.enteringTopic() && state.active && state.alternatives.length > 0 && choices.ready;
 		if (data.includes("\x1b[200~")) this.pasting = true;
 		if (this.pasting) {
+			if (available) this.seedHighlightedAnswer(state, choices);
 			choices.focused = false;
 			if (data.includes("\x1b[201~")) this.pasting = false;
 			Editor.prototype.handleInput.call(this, data);
@@ -261,13 +265,20 @@ class BuildReplyEditor extends CustomEditor {
 				return;
 			}
 			if (choices.focused) {
+				if (matchesKey(data, "pageUp") || matchesKey(data, "pageDown")) {
+					choices.scroll = Math.max(0, choices.scroll + (matchesKey(data, "pageUp") ? -1 : 1) * choices.pageSize);
+					this.refresh();
+					return;
+				}
 				if (matchesKey(data, "up") || matchesKey(data, "shift+tab")) {
 					choices.selected = (choices.selected + state.alternatives.length) % (state.alternatives.length + 1);
+					choices.scroll = 0;
 					this.refresh();
 					return;
 				}
 				if (matchesKey(data, "down") || matchesKey(data, "tab")) {
 					choices.selected = (choices.selected + 1) % (state.alternatives.length + 1);
+					choices.scroll = 0;
 					this.refresh();
 					return;
 				}
@@ -298,9 +309,14 @@ class BuildReplyEditor extends CustomEditor {
 					this.refresh();
 					return;
 				}
+				const multiline = data.length > 1 && /[\r\n]/.test(data) && !data.includes("\x1b");
+				const key = data.startsWith("\x1b") ? parseKey(data)?.replace(/^shift\+/, "") : undefined;
+				const textInput = /^[^\x00-\x1f\x7f-\x9f]+$/u.test(data)
+					|| key === "space" || (key !== undefined && [...key].length === 1);
+				if (multiline || textInput) this.seedHighlightedAnswer(state, choices);
 				choices.focused = false;
 				this.refresh();
-				if (data.length > 1 && /[\r\n]/.test(data) && !data.includes("\x1b")) {
+				if (multiline) {
 					Editor.prototype.handleInput.call(this, `\x1b[200~${data}\x1b[201~`);
 					return;
 				}
@@ -350,93 +366,19 @@ function firstWord(text: string): string {
 	return text.trim().split(/\s+/, 1)[0]?.toLowerCase() ?? "";
 }
 
-function shellSegments(command: string): string[] {
-	return command
-		.split(/&&|\|\||;|\n/) // pipelines are handled separately to avoid flagging read-only grep pipelines as mutating.
-		.map((s) => s.trim())
-		.filter(Boolean);
-}
-
-function isReadOnlyGit(args: string[]): boolean {
-	const sub = args[1];
-	return ["status", "log", "diff", "show", "branch", "grep", "ls-files", "remote", "rev-parse", "describe"].includes(sub);
-}
-
-function isReadOnlyGh(args: string[]): boolean {
-	const sub = args[1];
-	const sub2 = args[2];
-	if (["status", "auth", "repo", "pr", "issue", "label", "milestone"].includes(sub) === false) return false;
-	if (sub === "repo") return [undefined, "view", "list"].includes(sub2);
-	if (sub === "issue") return [undefined, "list", "view", "status"].includes(sub2);
-	if (sub === "pr") return [undefined, "list", "view", "status", "diff", "checks"].includes(sub2);
-	if (sub === "label" || sub === "milestone") return [undefined, "list", "view"].includes(sub2);
-	return true;
-}
-
-function isProbablyReadOnlyBash(command: string): boolean {
-	const trimmed = command.trim();
-	if (!trimmed) return true;
-
-	// Redirection and common write helpers are mutations even if the command itself is read-only.
-	if (/(^|[^<])>(>|&)?\s*\S/.test(trimmed) || /\btee\b/.test(trimmed)) return false;
-
-	const definitelyMutating = /\b(rm|mv|cp|mkdir|rmdir|touch|chmod|chown|sudo|kill|pkill|reboot|shutdown|curl\s+.*\|\s*(sh|bash)|wget\s+.*\|\s*(sh|bash))\b/;
-	if (definitelyMutating.test(trimmed)) return false;
-
-	const unsafePhrases = [
-		"git add",
-		"git commit",
-		"git push",
-		"git checkout",
-		"git switch",
-		"git reset",
-		"git merge",
-		"git rebase",
-		"npm install",
-		"npm i",
-		"npm add",
-		"pnpm install",
-		"pnpm add",
-		"yarn add",
-		"yarn install",
-		"pip install",
-		"cargo install",
-		"cargo add",
-		"gh issue create",
-		"gh issue edit",
-		"gh issue close",
-		"gh pr create",
-		"gh pr edit",
-	];
-	const lower = trimmed.toLowerCase();
-	if (unsafePhrases.some((phrase) => lower.includes(phrase))) return false;
-
-	for (const segment of shellSegments(trimmed)) {
-		const args = segment.split(/\s+/);
-		const cmd = args[0];
-		if (!cmd) continue;
-		if (["cat", "head", "tail", "less", "more", "grep", "rg", "find", "fd", "ls", "pwd", "tree", "wc", "sort", "uniq", "cut", "awk", "sed", "date", "whoami", "uname", "which", "where", "echo"].includes(cmd)) {
-			continue;
-		}
-		if (["npm", "pnpm", "yarn"].includes(cmd)) {
-			if (["list", "outdated", "view", "info", "why"].includes(args[1])) continue;
-			return false;
-		}
-		if (cmd === "git") {
-			if (isReadOnlyGit(args)) continue;
-			return false;
-		}
-		if (cmd === "gh") {
-			if (isReadOnlyGh(args)) continue;
-			return false;
-		}
-		return false;
-	}
-	return true;
-}
-
 export default function buildExtension(pi: ExtensionAPI): void {
 	let state: BuildState = cloneState(DEFAULT_STATE);
+	const workflow = registerBuildWorkflow(pi, () => state, (markdown, implementation) => ({
+		...cloneState(DEFAULT_STATE),
+		active: !implementation,
+		topic: state.topic,
+		intent: state.intent,
+		outputPreference: state.outputPreference,
+		researchMode: state.researchMode,
+		phase: "interview",
+		checkpoint: implementation ? "" : markdown,
+		lastChangeSummary: "Continued Build with authoritative remainder state",
+	}));
 	let savingPlan = false;
 	let choices = emptyChoices();
 	let presentedAlternatives: BuildAlternative[] | undefined;
@@ -529,25 +471,23 @@ export default function buildExtension(pi: ExtensionAPI): void {
 				ctx.ui.setWidget("build-choices", undefined);
 			} else {
 				ctx.ui.setWidget("build-choices", (tui, theme) => {
-					const clean = (text: string) => text.replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
 					const items = [
-						...state.alternatives.map((alt) => ({ ...alt, label: clean(alt.label), description: alt.description ? clean(alt.description) : undefined })),
-						{ value: "", label: "Custom answer", description: "Write your own reply" },
+						...state.alternatives.map(optionText),
+						"Custom answer\nWrite your own reply",
 					];
 					return {
 						render(width: number) {
 							if (width < 1) return [];
 							const height = Math.max(1, tui.terminal.rows - 12);
 							const selected = Math.min(choices.selected, items.length - 1);
-							const hint = choices.focused ? "Alt+G edit • Choices" : "Alt+G choices • Custom editing";
-							const hints = [
-								theme.fg(choices.focused ? "accent" : "dim", `${hint} (${selected + 1}/${items.length})`),
-								...(choices.focused ? [theme.fg("dim", `↑↓ / Tab / Shift+Tab • Enter ${selected === items.length - 1 ? "edits" : "sends"} • type for custom`)] : []),
+							const status = choices.focused ? "Choices" : "Custom editing";
+							const headers = [
+								theme.fg(choices.focused ? "accent" : "dim", `${status} (${selected + 1}/${items.length})`),
 							].slice(0, Math.max(0, height - 1));
 							const prefixWidth = Math.min(2, Math.max(0, width - 2));
 							const rows = items.map((item, index) => {
-								const text = item.label + (item.description ? ` — ${item.description}` : "");
-								const wrapped = wrapTextWithAnsi(text, width - prefixWidth);
+								const display = width === 1 ? item.replace(/[^\x00-\x7f]/gu, (character) => `\\u{${character.codePointAt(0)!.toString(16)}}`) : item;
+								const wrapped = wrapTextWithAnsi(display, width - prefixWidth);
 								if (prefixWidth === 0 && index === selected) wrapped.unshift("");
 								return wrapped.map((line, row) => {
 									const prefix = index === selected && row === 0 ? "→ ".slice(0, Math.max(1, prefixWidth)) : " ".repeat(prefixWidth);
@@ -558,11 +498,13 @@ export default function buildExtension(pi: ExtensionAPI): void {
 								});
 							});
 							const lines = rows.flat();
-							const available = height - hints.length;
+							const available = height - headers.length;
 							const selectedStart = rows.slice(0, selected).reduce((sum, row) => sum + row.length, 0);
+							choices.pageSize = Math.max(1, available - 1);
+							choices.scroll = Math.min(choices.scroll, Math.max(0, rows[selected].length - available));
 							const padding = Math.floor(Math.max(0, available - rows[selected].length) / 2);
-							const start = Math.max(0, Math.min(selectedStart - padding, lines.length - available));
-							return [...hints, ...lines.slice(start, start + available)].map((line) => truncateToWidth(line, width, ""));
+							const start = Math.max(0, Math.min(selectedStart + choices.scroll - padding, lines.length - available));
+							return [...headers, ...lines.slice(start, start + available)].map((line) => truncateToWidth(line, width, ""));
 						},
 						invalidate() {},
 					};
@@ -570,25 +512,17 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			}
 		}
 		if (pendingTopic) {
-			ctx.ui.setStatus("build", ctx.ui.theme.fg("accent", "Build: enter topic"));
-			ctx.ui.setWidget("build", ["What change would you like to make?", "Send your topic in the composer • /build stop cancels"], { placement: "belowEditor" });
+			ctx.ui.setStatus("build", "\x1b[3;38;2;255;165;0mNew Change\x1b[0m");
+			ctx.ui.setWidget("build", ["What change would you like to make?"], { placement: "belowEditor" });
 			return;
 		}
-		if (!state.active) {
-			ctx.ui.setStatus("build", undefined);
-			ctx.ui.setWidget("build", undefined);
-			return;
-		}
-
 		const phase = currentPhase(state);
-		const status = phase === "research" ? "Build: researching" : "Build";
-		ctx.ui.setStatus("build", ctx.ui.theme.fg(phase === "output" ? "warning" : phase === "output-selection" ? "success" : "accent", status));
+		const status = phase === "research" ? "Research" : "Build";
+		ctx.ui.setStatus("build", state.active ? `\x1b[3;38;2;255;165;0m${status}\x1b[0m` : undefined);
 
-		const topic = state.topic.length > 90 ? `${state.topic.slice(0, 87)}...` : state.topic;
-		const lines = [
-			ctx.ui.theme.fg("accent", `Build: ${topic || "active"}`),
-		];
-		ctx.ui.setWidget("build", lines, { placement: "belowEditor" });
+		const displayText = state.topic.trim() ? ctx.sessionManager.getSessionName()?.trim() || state.topic : state.topic;
+		const topic = displayText.length > 90 ? `${displayText.slice(0, 87)}...` : displayText;
+		ctx.ui.setWidget("build", topic.trim() ? [ctx.ui.theme.fg("accent", topic)] : undefined, { placement: "belowEditor" });
 	}
 
 	function startSession(topic: string, ctx: ExtensionContext, partial: Partial<BuildState> = {}): void {
@@ -607,13 +541,11 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			}),
 			topic,
 			phase: "interview",
-			outputPhase: false,
-			outputSelection: undefined,
-			approvedOutputPlan: undefined,
 		};
 		state.phase = state.researchMode === "off" ? "interview" : "research";
 		state.checkpoint = initialCheckpoint(topic);
 		state.lastChangeSummary = "Started Build session";
+		workflow.start(ctx);
 		persist();
 		updateUi(ctx);
 	}
@@ -737,13 +669,13 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			}
 
 			if (command === "stop") {
+				if ((workflow.member() || state.active || pendingTopic) && !await workflow.selectModel(ctx, "implementation")) return;
+				workflow.stop();
 				clearTopicEntry();
 				state.pendingPlan = undefined;
 				state.active = false;
+				state.topic = "";
 				state.phase = "interview";
-				state.outputPhase = false;
-				state.outputSelection = undefined;
-				state.approvedOutputPlan = undefined;
 				state.currentQuestion = undefined;
 				state.alternatives = [];
 				state.lastChangeSummary = "Stopped Build session";
@@ -846,6 +778,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 
 			const images = await prepareDraft(topic, undefined, `/build ${trimmed || topic}`, ctx);
 			if (!images || generation !== currentGeneration) return;
+			if (!await workflow.selectModel(ctx, "interview")) return;
 			startSession(topic, ctx, partial);
 			pi.sendUserMessage([{ type: "text", text: kickoffText(topic) }, ...images], { deliverAs: "steer" });
 		},
@@ -856,11 +789,12 @@ export default function buildExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "build_finish_research",
 		label: "Finish Build Research",
-		description: "Record initial research findings and transition to the normal Build interview. Supply the full replacement markdown and concise changeSummary together in the same call.",
+		description: "Record initial research findings and transition to the normal Build interview.",
 		constrainedSampling: { type: "json_schema", strict: "require" },
 		parameters: Type.Object({
 			markdown: Type.String({ minLength: 1, description: "Full replacement checkpoint preserving requirements and decisions, with research findings, relevant paths, external sources if used, constraints, and unresolved questions. Explicitly record unavailable evidence or declined research." }),
 			changeSummary: Type.String({ minLength: 1, description: "Brief visible summary of research findings." }),
+			incorporatedEvidence: Type.Array(Type.String(), { maxItems: 128, description: "Exact Build evidence handles inspected and incorporated into this checkpoint, with no unresolved actionable detail omitted. Use [] when none. Only these successful research payloads may leave context." }),
 		}),
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			signal?.throwIfAborted();
@@ -868,6 +802,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			const markdown = params.markdown.trim();
 			const summary = params.changeSummary.trim();
 			if (!markdown || !summary) throw new Error("Research checkpoint and summary must not be empty.");
+			workflow.incorporate(params.incorporatedEvidence, ctx);
 			state.checkpoint = markdown;
 			state.phase = "interview";
 			state.alternatives = [];
@@ -885,19 +820,22 @@ export default function buildExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "build_update_checkpoint",
 		label: "Update Build Checkpoint",
-		description: "Replace the Build shared-understanding checkpoint. Supply the full replacement markdown and concise changeSummary together in the same call.",
+		description: "Replace the Build shared-understanding checkpoint.",
 		constrainedSampling: { type: "json_schema", strict: "require" },
 		parameters: Type.Object({
 			markdown: Type.String({ description: "The full replacement Markdown checkpoint." }),
 			changeSummary: Type.String({ description: "Brief visible summary of what changed." }),
+			incorporatedEvidence: Type.Array(Type.String(), { maxItems: 128, description: "Exact Build evidence handles inspected and incorporated, with no unresolved actionable detail omitted. Use [] when none. Only acknowledged successful research payloads may leave context." }),
 		}),
-		async execute(_toolCallId, params) {
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+			signal?.throwIfAborted();
 			if (!state.active) {
 				return {
 					content: [{ type: "text", text: "No active Build session. Start one with /build <topic>." }],
 					details: { checkpoint: state.checkpoint, changeSummary: "No active session", updatedAt: state.updatedAt },
 				};
 			}
+			workflow.incorporate(params.incorporatedEvidence, ctx);
 			state.checkpoint = params.markdown;
 			state.lastChangeSummary = params.changeSummary;
 			persist();
@@ -923,16 +861,16 @@ export default function buildExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "build_set_alternatives",
 		label: "Set Build Alternatives",
-		description: "Set answer alternatives before the next Build question. TUI shows label — description in one inline arrow/Tab selector; ask only the question in chat. Other modes need the same choices in text.",
+		description: "Set answer alternatives for the next Build question.",
 		parameters: Type.Object({
 			question: Type.String({ description: "The question these alternatives answer." }),
 			alternatives: Type.Array(
 				Type.Object({
-					value: Type.String({ description: "The exact reply submitted immediately when selected with Enter." }),
-					label: Type.String({ description: "Concise answer wording displayed in the selector or text choices." }),
-					description: Type.Optional(Type.String({ description: "Helpful option-specific context or recommendation, displayed after the label." })),
+					value: Type.String({ description: "Full exact reply text, submitted unchanged. Never shorten it to fit the display." }),
+					label: Type.String({ description: "Concise, concrete answer wording." }),
+					description: Type.Optional(Type.String({ description: "Helpful option-specific explanation or recommendation." })),
 				}),
-				{ description: "2-5 suggested replies, including a recommended option in its label or description." },
+				{ description: "2-5 useful suggested replies, with one recommendation in its label or description. Do not supply a Custom answer alternative." },
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -957,10 +895,11 @@ export default function buildExtension(pi: ExtensionAPI): void {
 		renderCall(args, theme) {
 			return new Text(theme.fg("toolTitle", theme.bold("build_set_alternatives ")) + theme.fg("muted", args.question ?? ""), 0, 0);
 		},
-		renderResult(result, _options, theme) {
+		renderResult(result, { expanded }, theme) {
 			const alternatives = ((result.details as any)?.alternatives ?? []) as BuildAlternative[];
 			const text = alternatives.length ? `✓ ${alternatives.length} answer options set` : "No alternatives set";
-			return new Text(theme.fg(alternatives.length ? "success" : "warning", text), 0, 0);
+			const details = expanded ? alternatives.map((alternative, index) => `\n\nOption ${index + 1}\n${optionText(alternative)}`).join("") : "";
+			return new Text(theme.fg(alternatives.length ? "success" : "warning", text) + details, 0, 0);
 		},
 	});
 
@@ -980,6 +919,10 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			}
 			if (state.pendingPlan !== pending) return;
 			const kickoff = pending.markdown + "\n\nImplement this plan.";
+			const fileContent = fileContextContent(pending.fileContext);
+			const implementationState = { ...cloneState(DEFAULT_STATE), topic: state.topic, intent: state.intent, researchMode: state.researchMode, outputPreference: state.outputPreference };
+			const implementationWorkflow = await workflow.implementation(ctx);
+			if (state.pendingPlan !== pending) return;
 			const parentSession = ctx.sessionManager.getSessionFile();
 			state.pendingPlan = undefined;
 			persist();
@@ -987,24 +930,29 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			try {
 				const result = await ctx.newSession({
 					parentSession,
+					setup: async (manager) => {
+						if (implementationWorkflow) manager.appendCustomEntry(WORKFLOW_ENTRY, implementationWorkflow);
+						manager.appendCustomEntry(STATE_ENTRY_TYPE, implementationState);
+						if (fileContent.length) manager.appendCustomMessageEntry("build-file-context", fileContent, false);
+					},
 					withSession: async (fresh) => {
 						replaced = true;
 						fresh.ui.notify(`Implementing plan saved to ${pending.path}`, "info");
 						try {
-							await fresh.sendUserMessage(kickoff);
+							await fresh.sendUserMessage(`/build-restore ${JSON.stringify(kickoff)}`, { expandPromptTemplates: true });
 						} catch (error) {
 							fresh.ui.setEditorText(kickoff);
-							fresh.ui.notify(`Could not start implementation; prompt restored in editor: ${error}`, "error");
+							fresh.ui.notify(`Could not start implementation; prompt restored in editor; planning file context remains saved in this session: ${error}`, "error");
 						}
 					},
 				});
-				if (result.cancelled) {
+				if (result.cancelled && workflow.member()) {
 					state.pendingPlan = pending;
 					persist();
 					ctx.ui.notify("Session switch cancelled. Plan saved; /build-implement retries.", "warning");
 				}
 			} catch (error) {
-				if (!replaced) {
+				if (!replaced && workflow.member()) {
 					state.pendingPlan = pending;
 					persist();
 				}
@@ -1016,9 +964,10 @@ export default function buildExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "build_finish_output_phase",
 		label: "Finish Build Output Phase",
-		description: "Complete Build: save the final Markdown implementation plan and automatically start a fresh session to implement it. Not for cancellation.",
+		description: "Complete Build: save the final Markdown implementation plan and selected already-read file observations, then automatically start a fresh session to implement it. Call alone. Do not read additional files merely to populate handoff context. Not for cancellation.",
 		parameters: Type.Object({
 			plan: Type.String({ minLength: 1, description: "Full finalized self-contained implementation plan in Markdown, not a filename or brief summary." }),
+			contextFiles: Type.Array(Type.String({ minLength: 1, maxLength: 4096 }), { maxItems: 64, description: "Relevant paths already read with read in available planning context. Distinct available read results transfer exactly, newest first for budget selection; identical results at the same offset are deduplicated. Use [] for plan-only handoff. Missing, removed or unavailable content is omitted, never fetched. Do not perform extra reads merely for handoff." }),
 		}),
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			if (savingPlan) throw new Error("A Build plan is already being saved.");
@@ -1028,6 +977,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			const markdown = params.plan.trim();
 			if (!markdown) throw new Error("The final plan must not be empty.");
 			signal?.throwIfAborted();
+			const fileContext = collectFileContext(params.contextFiles, workflow.fileContextProjection(ctx), ctx.cwd);
 			const directory = join(homedir(), ".pi", "agent", "plans");
 			const path = join(directory, `build-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}.md`);
 			const completingState = state;
@@ -1045,12 +995,9 @@ export default function buildExtension(pi: ExtensionAPI): void {
 				throw new Error(`Build changed while saving; plan saved but handoff cancelled: ${path}`);
 			}
 			clearTopicEntry();
-			state.pendingPlan = { path, markdown };
+			state.pendingPlan = { path, markdown, fileContext };
 			state.active = false;
 			state.phase = "interview";
-			state.outputPhase = false;
-			state.outputSelection = undefined;
-			state.approvedOutputPlan = undefined;
 			state.alternatives = [];
 			state.currentQuestion = undefined;
 			state.lastChangeSummary = `Finished Build; saved implementation plan to ${path}`;
@@ -1060,7 +1007,7 @@ export default function buildExtension(pi: ExtensionAPI): void {
 			// the command waits for idle while this tool returns and terminates the run.
 			pi.sendUserMessage("/build-implement", { deliverAs: "followUp", expandPromptTemplates: true });
 			return {
-				content: [{ type: "text", text: state.lastChangeSummary }],
+				content: [{ type: "text", text: `${state.lastChangeSummary}\nSelected file observations: ${fileContext.observations.length}.${fileContext.omitted.length ? `\n${fileContext.omitted.join("\n")}` : ""}` }],
 				details: { planPath: path, handoffQueued: true },
 				terminate: true,
 			};
@@ -1083,16 +1030,6 @@ export default function buildExtension(pi: ExtensionAPI): void {
 				reason: "Build remains read-only throughout the interview. When requirements are resolved, call build_finish_output_phase with the complete plan to save it and start implementation in a fresh session.",
 			};
 		}
-
-		if (event.toolName === "bash") {
-			const command = String((event.input as any)?.command ?? "");
-			if (!isProbablyReadOnlyBash(command)) {
-				return {
-					block: true,
-					reason: `Build read-only mode blocked a potentially mutating command. When requirements are resolved, call build_finish_output_phase with the complete plan; implementation runs in a fresh session, not the interview.\nCommand: ${command}`,
-				};
-			}
-		}
 	});
 
 	pi.on("before_agent_start", () => {
@@ -1100,12 +1037,12 @@ export default function buildExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("context_with_system", async (event, ctx) => {
-		if (!state.active) return;
+		if (!state.active) return { messages: workflow.context(event.messages, ctx, "") };
 
 		const thoroughBuildGuidance = [
-			"Be curious but collaborative: challenge vague answers, surface contradictions, and test assumptions without substituting your preferred approach for the user's intent.",
-			"Ask follow-up questions that resolve consequential ambiguities, not low-level implementation details solely to make a plan exhaustive. Do not re-ask settled questions unless new information affects them.",
-			"Walk dependent branches one at a time. If an answer changes upstream assumptions, revisit affected downstream decisions before moving on.",
+			"Challenge vagueness, contradictions and assumptions collaboratively; preserve the user's intent.",
+			"Resolve consequential ambiguities, not exhaustive implementation detail. Reopen settled questions only when new evidence affects them.",
+			"Follow dependent branches one at a time; revisit downstream decisions when upstream assumptions change.",
 		].join("\n- ");
 
 		const researchGuidance: Record<ResearchMode, string> = {
@@ -1116,11 +1053,11 @@ export default function buildExtension(pi: ExtensionAPI): void {
 
 		const evidenceGuidance = state.researchMode === "off" ? "" : "\n- Within the permitted scope, inspect relevant local code, configuration and documentation first; use web_search to gather relevant factual context and anecdotal perspectives when useful. Keep research focused. Record unavailable or failed evidence rather than claiming verification. Do not send private code, conversation content or secrets in web queries.";
 		const stageGuidance = currentPhase(state) === "research"
-			? "Initial research is pending. Before normal interview questions, ask only for research permission or essential missing context that prevents research (such as the project directory). Do not produce a final plan yet. Call build_finish_research alone, supplying the full replacement markdown and concise changeSummary together in the same call, when the focused research pass is complete, or when unavailable/declined evidence has been explicitly recorded. Include findings, relevant paths, sources if used, constraints, and unresolved questions while preserving requirements and decisions."
+			? "Initial research is pending. Before normal interview questions, ask only for research permission or essential missing context that prevents research (such as the project directory). Do not produce a final plan yet. Call build_finish_research alone when the focused research pass is complete or unavailable/declined evidence has been explicitly recorded."
 			: "Continue the adaptive interview; do not restart initial research. If build_finish_research just succeeded, briefly summarize its findings and continue immediately without approval. Targeted follow-up research remains subject to the research mode.";
 
 		const prompt = `[BUILD EXTENSION ACTIVE]
-Current runtime state (tool calls and results in the transcript are historical records):
+Authoritative runtime state (transcript tools are historical):
 - Topic: ${state.topic}
 - Intent preset: ${state.intent}
 - Research mode: ${state.researchMode}
@@ -1132,42 +1069,37 @@ Current runtime state (tool calls and results in the transcript are historical r
 Current checkpoint:
 ${state.checkpoint || "(No checkpoint yet.)"}
 
-Current answer alternatives:
-${state.alternatives.length ? state.alternatives.map((a) => `- ${a.label}: ${a.value}${a.description ? ` (${a.description})` : ""}`).join("\n") : "(None set.)"}
-
 Interview policy:
-- The explicit requested topic defines scope. Use existing conversation and available summaries as background, preserving confirmed user decisions and constraints without treating assistant suggestions as confirmed requirements or substituting an inferred topic.
-- Apply a thorough Socratic method to reach shared understanding of the user's intended outcome, reasoning, and constraints. Understanding the user is the interview's primary goal; the final plan expresses that understanding.
-- Avoid hardcoded interview phases. Adapt dimensions to the subject and the user's expertise, including desired outcome mode: learning, building, researching, content/tutorial creation, decision review, etc.
-- Ask mostly one focused question at a time. Small grouped questions are allowed only when inseparable.
-- Before each interview question, call build_set_alternatives with 2-5 concise, concrete replies. Put concise answer wording in label and helpful option-specific explanation or recommendation in description. Mark one recommended answer in its label or description. Offer useful defaults rather than exhaustive menus. Do not supply a Custom answer alternative.
+- The explicit topic defines scope. Preserve confirmed decisions and constraints from conversation/summaries; assistant suggestions are not confirmed requirements.
+- Build shared understanding of the user's outcome, reasoning and constraints through adaptive Socratic questioning, tailored to subject, expertise and outcome mode, not fixed interview phases.
+- Ask one focused question at a time; group only inseparable questions. Before each, call build_set_alternatives with useful defaults, not exhaustive menus.
 - ${ctx.mode === "tui"
-	? "Ask the question in chat without listing or paraphrasing its alternatives. Essential question context can remain in chat, but option-specific explanations belong only in the selector. After the question finishes, users select with arrows or Tab/Shift+Tab and Enter immediately submits the exact value. The UI-owned Custom answer option or typing switches to free-form editing; Alt+G toggles list/editor focus without replacing the draft."
-	: "Show the question and its choices in chat using the same label — description wording supplied to build_set_alternatives (label only when description is absent). Users answer normally in text and may write their own reply; there is no selectable list in this mode."}
+	? "Ask only the question in chat, with essential question context if needed. Do not list or paraphrase alternatives; option-specific explanations belong only in the selector."
+	: "Show the question and every alternative in chat: full label, optional separate description, then full exact submitted reply value, in order without field headings. Preserve wording and meaningful line breaks using literal formatting, not interpreted markup. Do not summarize or alter values. Users answer in text or write their own reply; there is no selector."}
 - ${thoroughBuildGuidance}
-- Remain read-only throughout this session. Do not implement, write artifacts, create issues, install packages, or run mutating commands here.
+- Keep this session focused on research and planning, with implementation handed off to a fresh session. The edit and write tools are unavailable during the interview.
 
 Research policy:
 - ${researchGuidance[state.researchMode]}${evidenceGuidance}
 - ${stageGuidance}
 
 Checkpoint policy:
-- The checkpoint is durable shared understanding, not runtime configuration. Reflect user corrections and distinguish confirmed decisions from recommendations, assumptions, and explicitly deferred questions.
-- Whenever understanding meaningfully changes (decision, clarification, assumption, risk, or open question), call build_update_checkpoint with the full replacement markdown and concise changeSummary together in the same call before the next question. No update is needed otherwise.
-- For both checkpoint tools, require a successful result before treating the checkpoint as recorded or moving to the next dependent step. On argument-validation failure, correct and resubmit the complete call with both markdown and changeSummary; do not continue as though it succeeded.
+- Checkpoints record understanding, not runtime configuration. Preserve user corrections; distinguish decisions, recommendations, assumptions and deferred questions.
+- Call build_update_checkpoint before the next question only when understanding changes (decisions, clarifications, assumptions, risks or questions).
+- Originals are retrievable via build_recall; errors stay visible. Await checkpoint success before dependent steps. On validation failure, correct and resubmit the full call.
 - If the provider cannot support required strict JSON-schema constrained sampling, stop and report the provider limitation. Do not repeatedly retry, downgrade to unconstrained generation, or change the required-field contract.
 - Use adaptive Markdown sections, a coverage checklist, and a decision-branch ledger; mark branches resolved, open, contradicted, or intentionally deferred. A contradiction remains unresolved until clarified or explicitly deferred.
 
 Completion policy:
 - Resolve consequential ambiguities in objective, scope, constraints, dependencies, risks, and validation; explicitly defer non-blocking questions.
-- Once consequential requirements are resolved or explicitly deferred, update the checkpoint and call build_finish_output_phase alone with the complete self-contained Markdown implementation plan. It saves the plan and automatically starts fresh-session implementation. Do not ask for output selection, readiness confirmation, or implementation approval.
+- When ready, update the checkpoint and call build_finish_output_phase alone with a self-contained Markdown implementation plan. Saving automatically starts fresh-session implementation: no output menu, readiness check or approval question.
+- contextFiles selects relevant already-read paths, or [] for plan only. Available results, including incorporated reads, transfer within limits; missing context is explicitly omitted, never fetched. Do not read or recall merely for transfer; implementation can acquire missing ranges.
 - Include requested deliverables and /build output preferences in the plan's scope. Preserve agreed requirements, rationale, constraints, non-goals, steps, validation, decisions versus assumptions and deferred items, and context a fresh session needs without interview history.
 - Do not expand scope or bypass permission, authentication, or repository setup gates; preserve these constraints in the handoff plan.
-- If the user cancels, do not call this tool; use /build stop.
-- If the user asks to stop or cancel, do not finish or queue implementation. /build stop cancels without implementation. If the user adds context before completion, incorporate it and continue resolving consequential questions.
+- If the user asks to stop or cancel, use /build stop; do not finish or queue implementation. If the user adds context before completion, incorporate it and continue resolving consequential questions.
 [/BUILD EXTENSION ACTIVE]`;
 		return {
-			messages: [...event.messages, { role: "system", content: "", sections: { "build.active": prompt }, timestamp: Date.now() }],
+			messages: workflow.context(event.messages, ctx, prompt),
 		};
 	});
 
@@ -1189,6 +1121,7 @@ Completion policy:
 		const images = await prepareDraft(text, event.images, text, ctx, submission?.revision);
 		if (!images || generation !== currentGeneration || state !== currentState || pendingTopic !== pending || (!pending && !state.active)) return { action: "handled" };
 		if (pending) {
+			if (!await workflow.selectModel(ctx, "interview")) return { action: "handled" };
 			startSession(text, ctx, pending);
 			pi.events.emit("global-input-history:transform", { images, originalText: event.text });
 			return { action: "transform", text: kickoffText(text), images };
@@ -1261,6 +1194,27 @@ Completion policy:
 		syncTools();
 		updateUi(ctx);
 	}
+
+	pi.registerCommand("build-restore", {
+		description: "Restore persisted Build workflow state after a fresh-session setup",
+		handler: async (args, ctx) => {
+			workflow.restore(ctx);
+			restoreState(ctx);
+			const kickoff: unknown = args.trim() ? JSON.parse(args) : undefined;
+			if (kickoff !== undefined && typeof kickoff !== "string") throw new Error("Invalid Build kickoff.");
+			if (!await workflow.ensureModel(ctx)) {
+				if (typeof kickoff === "string") ctx.ui.setEditorText(kickoff);
+				return;
+			}
+			if (typeof kickoff === "string" && workflow.member()) {
+				try { pi.sendUserMessage(kickoff); }
+				catch (error) {
+					ctx.ui.setEditorText(kickoff);
+					ctx.ui.notify(`Build kickoff failed; prompt restored in editor: ${error}`, "error");
+				}
+			}
+		},
+	});
 
 	pi.on("session_start", async (_event, ctx) => {
 		live = true;

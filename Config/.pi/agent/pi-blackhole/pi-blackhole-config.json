@@ -1,5 +1,5 @@
 {
   "memory": false,
-  "compaction": "auto",
-  "compactionEngine": "blackhole"
+  "compaction": "off",
+  "compactionEngine": "pi-default"
 }
