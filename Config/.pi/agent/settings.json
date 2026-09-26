@@ -1,8 +1,8 @@
 {
   "lastChangelogVersion": "0.87.1",
   "theme": "dark",
-  "defaultProvider": "openai",
-  "defaultModel": "gpt-6-astra",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-6-sol",
   "defaultThinkingLevel": "medium",
   "packages": [
     "npm:pi-web-search@1.6.0",

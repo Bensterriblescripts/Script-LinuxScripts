@@ -15,7 +15,8 @@ const RESEARCH_TOOLS = new Set(["read", "web_search", "recall", "grep", "find", 
 const TOOLS = ["build_recall", "build_continue_checkpoint"];
 const CONTEXT_PERCENT = { interview: 25, implementation: 25 } as const;
 const SEED_CONTEXT_LIMIT = 0.25;
-const PHASE_MODELS = { interview: "gpt-6-sol", implementation: "gpt-6-astra" } as const;
+const PHASE_MODELS = { interview: "gpt-6-sol", implementation: "gpt-6-sol" } as const;
+const PHASE_THINKING = { interview: "medium", implementation: "high" } as const;
 const REMAINDER = "Create a plan to finish off the remainder of this Build workflow. Treat the attached confirmed decisions and constraints as authoritative. Verify recorded progress where necessary, resolve only outstanding consequential questions, and do not repeat completed work or settled interview questions. Retrieve earlier evidence by its source handles only when needed.";
 
 interface Workflow {
@@ -88,7 +89,7 @@ export function registerBuildWorkflow(pi: ExtensionAPI, getBuild: () => BuildSna
 	}
 
 	function modelMatches(ctx: ExtensionContext, phase: keyof typeof PHASE_MODELS): boolean {
-		return (ctx.model?.provider === "openai-codex" || ctx.model?.provider === "openai") && ctx.model.id === PHASE_MODELS[phase] && pi.getThinkingLevel() === "medium";
+		return (ctx.model?.provider === "openai-codex" || ctx.model?.provider === "openai") && ctx.model.id === PHASE_MODELS[phase] && pi.getThinkingLevel() === PHASE_THINKING[phase];
 	}
 
 	async function selectModel(ctx: ExtensionContext, phase: keyof typeof PHASE_MODELS): Promise<boolean> {
@@ -103,11 +104,11 @@ export function registerBuildWorkflow(pi: ExtensionAPI, getBuild: () => BuildSna
 				measuredContext = undefined;
 				if (model.provider === "openai") ctx.ui.notify(`Codex ${id} is unavailable; using openai/${id} via the API instead.`, "warning");
 			}
-			pi.setThinkingLevel("medium");
-			if (!modelMatches(ctx, phase)) throw new Error("Model or medium thinking selection did not take effect.");
+			pi.setThinkingLevel(PHASE_THINKING[phase]);
+			if (!modelMatches(ctx, phase)) throw new Error("Model or thinking selection did not take effect.");
 			return true;
 		} catch (error) {
-			ctx.ui.notify(`Build requires ${id} with medium thinking via openai-codex or openai. ${error} Workflow data retained; fix model availability and retry.`, "error");
+			ctx.ui.notify(`Build requires ${id} with ${PHASE_THINKING[phase]} thinking via openai-codex or openai. ${error} Workflow data retained; fix model availability and retry.`, "error");
 			return false;
 		}
 	}
