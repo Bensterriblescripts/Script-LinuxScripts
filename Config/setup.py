@@ -30,8 +30,10 @@ CONFIG_FILES = (
     '.pi/agent/extensions/global-input-history/writer.mjs',
     '.pi/agent/extensions/ghostty-status/index.ts',
     '.config/ghostty/config.ghostty', '.config/ghostty/auto/theme.ghostty',
+    '.config/nvim/init.lua', '.config/nvim/nvim-pack-lock.json',
     '.config/fish/config.fish', '.local/bin/dolphin-open-ghostty',
     '.local/share/kio/servicemenus/open-pi.desktop',
+    '.local/share/kio/servicemenus/open-nvim.desktop',
     '.local/share/kio/servicemenus/com.mitchellh.ghostty.desktop',
 )
 

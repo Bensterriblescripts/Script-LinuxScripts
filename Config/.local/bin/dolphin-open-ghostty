@@ -124,7 +124,7 @@ def open_tab(bus, window, arguments):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dry-run', action='store_true')
-    parser.add_argument('mode', choices=['pi', 'terminal'])
+    parser.add_argument('mode', choices=['pi', 'terminal', 'nvim'])
     parser.add_argument('directory', type=Path)
     args = parser.parse_args()
     directory = args.directory.resolve()
@@ -132,7 +132,11 @@ def main():
         parser.error(f'Not a directory: {directory}')
     arguments = [f'--working-directory={directory}']
     if args.mode == 'pi':
-        arguments += ['-e', str(Path.home() / '.local/bin/pi')]
+        arguments += ['-e', '/usr/bin/env', '-C', str(directory),
+                      str(Path.home() / '.local/bin/pi')]
+    elif args.mode == 'nvim':
+        arguments += ['-e', '/usr/bin/env', '-C', str(directory),
+                      '/usr/bin/nvim', str(directory)]
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     for attempt in range(3):
         table = processes()

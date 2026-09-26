@@ -1,0 +1,8 @@
+{
+  "plugins": {
+    "nvim-tree.lua": {
+      "rev": "478c69c0fe253caea88de9c5e138bfa77395a59a",
+      "src": "https://github.com/nvim-tree/nvim-tree.lua"
+    }
+  }
+}

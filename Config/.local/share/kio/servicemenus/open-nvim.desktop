@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Open in Neovim
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=inode/directory;
+Actions=ZOpenNvim;
+X-KDE-Protocols=file
+
+[Desktop Action ZOpenNvim]
+Name=Open in Neovim
+Icon=com.mitchellh.ghostty
+Exec=dolphin-open-ghostty nvim %f
